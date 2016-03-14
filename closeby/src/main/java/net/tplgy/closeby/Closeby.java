@@ -7,14 +7,10 @@ import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertiseSettings;
 import android.bluetooth.le.BluetoothLeAdvertiser;
 import android.content.Context;
-import android.content.Intent;
 import android.os.ParcelUuid;
-import android.provider.SyncStateContract;
 import android.util.Log;
 
 import java.util.ArrayList;
-
-import static android.support.v4.app.ActivityCompat.startActivityForResult;
 
 /**
  * Created by thomas on 2016-03-11.
@@ -30,16 +26,20 @@ public class Closeby {
         DISCONNECTED
     };
 
-    final static string TAG = "Closeby";
-    private static Closeby mInstance = new Closeby();
+    final static String TAG = "Closeby";
+
+    private static Closeby mInstance;
+    private Context mContext;
     private BluetoothAdapter mBluetoothAdapter;
     private BluetoothLeAdvertiser mAdvertister;
 
     ArrayList<ClosebyService> mServices;
 
+    public static Closeby getInstance(Context context) {
 
-
-    public static Closeby getInstance() {
+        if (mInstance == null) {
+            mInstance = new Closeby(context);
+        }
 
         if (mInstance.mBluetoothAdapter == null) {
             return null;
@@ -48,12 +48,23 @@ public class Closeby {
         return mInstance;
     }
 
-    private Closeby() {
-        mBluetoothAdapter = ((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE)).getAdapter();
+    private Closeby(Context context) {
+        mContext = context;
+        mBluetoothAdapter = ((BluetoothManager)mContext.getSystemService(Context.BLUETOOTH_SERVICE)).getAdapter();
         if (mBluetoothAdapter == null) {
             Log.i(TAG, "Bluetooth is not supported on this device.");
             return;
         }
+
+        Log.i(TAG, "Bluetooth state:\n   Address: " + mBluetoothAdapter.getAddress()
+                + "\n   State: " + mBluetoothAdapter.getState()
+                + "\n   Scan-mode: " + mBluetoothAdapter.getScanMode()
+                + "\n   Enabled: " + mBluetoothAdapter.isEnabled()
+                + "\n   Name:" + mBluetoothAdapter.getName()
+                + "\n   Discovering: " + mBluetoothAdapter.isDiscovering()
+                + "\n   MultipleAdvertisementSupport: " + mBluetoothAdapter.isMultipleAdvertisementSupported()
+                + "\n   OffloadedFilteringSupport: " + mBluetoothAdapter.isOffloadedFilteringSupported()
+                + "\n   OffloadedScanBatchingSupport: " + mBluetoothAdapter.isOffloadedScanBatchingSupported());
 
         if (mBluetoothAdapter.isEnabled()) {
 
@@ -69,6 +80,7 @@ public class Closeby {
             //startActivityForResult(enableBtIntent, SyncStateContract.Constants.REQUEST_ENABLE_BT);
         }
 
+        mServices = new ArrayList<>();
 
     }
 
@@ -82,56 +94,44 @@ public class Closeby {
             return;
         }
 
-        Log.v(TAG, "Add service" + service.toString());
+        Log.v(TAG, "Add service: " + service.toString());
         mServices.add(service);
     }
 
     public boolean startAdvertising() {
+        if (mAdvertister == null) {
+            Log.d(TAG, "No BLE advertiser available, ignore advertise service");
+            return false;
+        }
 
         if (mServices.isEmpty()) {
             Log.d(TAG, "No service to advertise, please addAdvertiseService first.");
             return false;
         }
 
-        // Is Bluetooth turned on?
-        if (mBluetoothAdapter.isEnabled()) {
+        Log.d(TAG, "advertise service: " + mServices.get(0).mServiceUuid.toString());
+        AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder();
 
-            if (null != mBluetoothAdapter.getBluetoothLeAdvertiser()) {
-                Log.i(TAG, "");
-
-            } else {
-                // Bluetooth Advertisements are not supported.
-                Log.e(TAG, R.string.bt_ads_not_supported);
-            }
-        } else {
-
-            // Prompt user to turn on Bluetooth (logic continues in onActivityResult()).
-            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-            startActivityForResult(enableBtIntent, Constants.REQUEST_ENABLE_BT);
-        }
-
-
-
-        String serviceData = "LD";
-        AdvertiseData advertiseData = new AdvertiseData.Builder()
-                .addServiceUuid(new ParcelUuid(TPLGY_BEACON))
-                .build();
+        dataBuilder.addServiceUuid(ParcelUuid.fromString(mServices.get(0).mServiceUuid.toString()));
+        dataBuilder.setIncludeDeviceName(true);
+        AdvertiseData advertiseData = dataBuilder.build();
 
         AdvertiseSettings advertiseSettings = new AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
                 .setConnectable(true)
                 .setTimeout(0)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM).build();
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH).build();
 
-        m_advertister.startAdvertising(advertiseSettings, advertiseData, new AdvertiseCallback() {
+        mAdvertister.startAdvertising(advertiseSettings, advertiseData, new AdvertiseCallback() {
             public void onStartSuccess(AdvertiseSettings settingsInEffect) {
-                Log.i(LOG_TAG, "succesfully started advertising");
+                Log.i(TAG, "succesfully started advertising");
             }
 
             public void onStartFailure(int errorCode) {
-                Log.e(LOG_TAG, "could not start advertising..." + Integer.toString(errorCode));
+                Log.e(TAG, "could not start advertising..." + Integer.toString(errorCode));
             }
         });
+
         return true;
     }
 

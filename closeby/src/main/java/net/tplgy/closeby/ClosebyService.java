@@ -2,6 +2,7 @@ package net.tplgy.closeby;
 
 import android.util.Log;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -10,27 +11,29 @@ import java.util.UUID;
  */
 public class ClosebyService {
 
-    static final string TAG = "ClosebyService";
-    UUID serviceUuid;
-    Map<UUID, Byte[]> properties;
+    static final String TAG = "ClosebyService";
+    private static final Integer BLE_ATTR_MAX_LENGTH = 512;
 
-    ClosebyService(UUID serviceUuid) {
-        this.serviceUuid = serviceUuid;
+    UUID mServiceUuid;
+    Map<UUID, byte[]> mProperties;
+
+    public ClosebyService(UUID serviceUuid) {
+        this.mServiceUuid = serviceUuid;
+        mProperties = new HashMap<>();
     }
 
-    public boolean addProperty(UUID key, Byte[] value) {
-        if (value.length > BLE_GATTS_VAR_ATTR_LEN_MAX) {
+    public boolean addProperty(UUID key, byte[] value) {
+        if (value.length > BLE_ATTR_MAX_LENGTH) {
             Log.i(TAG, "property value is too long.");
             return false;
         }
 
-        properties.put(key, value);
+        mProperties.put(key, value);
         return true;
     }
 
-
-    public Map<UUID, Byte[]> getProperties() {
-        return properties;
+    public Map<UUID, byte[]> getProperties() {
+        return mProperties;
     }
 
 }
