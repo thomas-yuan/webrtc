@@ -1,27 +1,149 @@
 package net.tplgy.webrtc;
 
+import android.content.Context;
+import android.content.Intent;
+import android.provider.SyncStateContract;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.method.ScrollingMovementMethod;
+import android.util.Log;
+import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ListView;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import net.tplgy.closeby.Closeby;
+import net.tplgy.closeby.ClosebyDiscoveryListener;
 import net.tplgy.closeby.ClosebyService;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryListener {
 
-    private final static String SERVICE_UUID = "B5A7CE02-235C-45FA-A95F-0B5935E04029";
-    private final static String NAME_UUID = "0E4E8920-A8B5-4D98-ADEB-63DA6D0BDC2B";
+    private final static String SERVICE_UUID = "11111111-2222-3333-4444-555555555555";
+    private final static String NAME_UUID = "11111111-2222-3333-4444-666666666666";
+    private ArrayList<String> mDevices;
+    private StableArrayAdapter mAdapter;
+
     Closeby mCloseby;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        final TextView textview = (TextView) findViewById(R.id.textView);
+        textview.setMovementMethod(new ScrollingMovementMethod());
+
         mCloseby = Closeby.getInstance(this);
-        ClosebyService s = new ClosebyService(UUID.fromString(SERVICE_UUID));
-        s.addProperty(UUID.fromString(NAME_UUID), "Topology".getBytes());
-        mCloseby.addAdvertiseService(s);
-        mCloseby.startAdvertising();
+        if (mCloseby == null) {
+            textview.append("\nBluetooth is not supported!!!");
+            return;
+        }
+
+        mCloseby.addDiscoveryListener(this);
+        mCloseby.setLogger(textview);
+
+        final ListView listview = (ListView) findViewById(R.id.listView);
+        mDevices = new ArrayList<String>();
+        mAdapter = new StableArrayAdapter(this, android.R.layout.simple_list_item_1, mDevices);
+        listview.setAdapter(mAdapter);
+
+        final Button central = (Button) findViewById(R.id.button2);
+        central.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                textview.append("\nCENTRAL button clicked.");
+                mCloseby.stopDiscovering();
+
+                ArrayList<UUID> services = new ArrayList<UUID>();
+                services.add(UUID.fromString(SERVICE_UUID));
+                mCloseby.startDiscovering(services);
+            }
+        });
+
+        final Button peripheral = (Button) findViewById(R.id.button1);
+        peripheral.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                textview.append("\nPERIPHERAL button clicked.");
+                final EditText value = (EditText) findViewById(R.id.editText);
+                mCloseby.stopAdvertising();
+
+                ClosebyService s = new ClosebyService(UUID.fromString(SERVICE_UUID));
+                s.addProperty(UUID.fromString(NAME_UUID), value.getText().toString().getBytes());
+                mCloseby.addAdvertiseService(s);
+                mCloseby.startAdvertising();
+            }
+        });
+
+
+        listview.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, final View view,
+                                    int position, long id) {
+                final String item = (String) parent.getItemAtPosition(position);
+                textview.append("\nConnect to device " + item);
+                mCloseby.connect(item);
+            }
+        });
+
+        if (!mCloseby.isEnabled()) {
+            textview.append("\nPlease enable bluetooth.");
+        }
+    }
+
+    protected void onDestroy() {
+        mCloseby.stopAdvertising();
+        mCloseby.stopDiscovering();
+        super.onDestroy();
+    }
+
+    public void onNewDevice(String deviceName, String deviceAddress) {
+        mDevices.add(deviceAddress);
+        mAdapter.mIdMap.put(deviceAddress, mDevices.size());
+        mAdapter.notifyDataSetChanged();
+    }
+
+    public void onLost(String address) {
+        mAdapter.mIdMap.remove(address);
+    }
+
+    public void onReset() {
+        mDevices.clear();
+        mAdapter.mIdMap.clear();
+        //assert (mAdapter.mIdMap.size() == 0);
+        mAdapter.notifyDataSetInvalidated();// .notifyDataSetChanged();
+    }
+    private class StableArrayAdapter extends ArrayAdapter<String> {
+
+        HashMap<String, Integer> mIdMap = new HashMap<String, Integer>();
+
+        public StableArrayAdapter(Context context, int textViewResourceId,
+                                  List<String> objects) {
+            super(context, textViewResourceId, objects);
+            for (int i = 0; i < objects.size(); ++i) {
+                mIdMap.put(objects.get(i), i);
+            }
+        }
+
+        @Override
+        public long getItemId(int position) {
+            String item = getItem(position);
+            return mIdMap.get(item);
+        }
+
+        @Override
+        public boolean hasStableIds() {
+            return true;
+        }
+
     }
 }

@@ -5,7 +5,7 @@ package net.tplgy.closeby;
  */
 public interface ClosebyDataTransferListener {
 
-    void dataReceived(ClosebyPeer peer, Byte[] data, boolean inbound);
+    void dataReceived(ClosebyPeer peer, Byte[] data);
 
     void connectionStateChanged(ClosebyPeer peer, Closeby.ConnectionState state);
 }

@@ -1,16 +1,39 @@
 package net.tplgy.closeby;
 
+import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattDescriptor;
+import android.bluetooth.BluetoothGattServer;
+import android.bluetooth.BluetoothGattServerCallback;
+import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertiseSettings;
 import android.bluetooth.le.BluetoothLeAdvertiser;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Handler;
 import android.os.ParcelUuid;
 import android.util.Log;
+import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Created by thomas on 2016-03-11.
@@ -27,38 +50,58 @@ public class Closeby {
     };
 
     final static String TAG = "Closeby";
+    private static final Object mLock = new Object();
 
     private static Closeby mInstance;
-    private Context mContext;
+    private Activity mContext;
+    private BluetoothManager mManager;
     private BluetoothAdapter mBluetoothAdapter;
+    private BluetoothGattServer mGattServer;
     private BluetoothLeAdvertiser mAdvertister;
+    private BluetoothLeScanner mScanner;
 
-    ArrayList<ClosebyService> mServices;
+    private ClosebyDiscoveryListener mDiscoveryListener;
+    ArrayList<ClosebyService> mAdvertisementServices;
 
-    public static Closeby getInstance(Context context) {
+    public static Closeby getInstance(Activity context) {
 
-        if (mInstance == null) {
-            mInstance = new Closeby(context);
+        synchronized(mLock) {
+            if (mInstance == null) {
+                mInstance = new Closeby(context);
+            }
         }
 
+        // BLUETOOTH is not supported on this device.
         if (mInstance.mBluetoothAdapter == null) {
             return null;
         }
 
+        // Register for broadcasts on BluetoothAdapter state change
+        IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+        context.registerReceiver(mInstance.mReceiver, filter);
+
         return mInstance;
     }
 
-    private Closeby(Context context) {
+    public boolean isEnabled() {
+        return mBluetoothAdapter.isEnabled();
+    }
+
+    private Closeby(Activity context) {
         mContext = context;
-        mBluetoothAdapter = ((BluetoothManager)mContext.getSystemService(Context.BLUETOOTH_SERVICE)).getAdapter();
+        mAdvertisementServices = new ArrayList<>();
+        mResults = new ArrayList<>();
+        mManager = (BluetoothManager)mContext.getSystemService(Context.BLUETOOTH_SERVICE);
+        mBluetoothAdapter = mManager.getAdapter();
         if (mBluetoothAdapter == null) {
-            Log.i(TAG, "Bluetooth is not supported on this device.");
+            log("Bluetooth is not supported on this device.");
             return;
         }
 
-        Log.i(TAG, "Bluetooth state:\n   Address: " + mBluetoothAdapter.getAddress()
-                + "\n   State: " + mBluetoothAdapter.getState()
-                + "\n   Scan-mode: " + mBluetoothAdapter.getScanMode()
+        log("Bluetooth state:"
+                + "\n   Address: " + mBluetoothAdapter.getAddress()
+                + "\n   State: " + ClosebyHelper.state2String(mBluetoothAdapter.getState())
+                + "\n   Scan-mode: " + ClosebyHelper.scanMode2String(mBluetoothAdapter.getScanMode())
                 + "\n   Enabled: " + mBluetoothAdapter.isEnabled()
                 + "\n   Name:" + mBluetoothAdapter.getName()
                 + "\n   Discovering: " + mBluetoothAdapter.isDiscovering()
@@ -66,85 +109,377 @@ public class Closeby {
                 + "\n   OffloadedFilteringSupport: " + mBluetoothAdapter.isOffloadedFilteringSupported()
                 + "\n   OffloadedScanBatchingSupport: " + mBluetoothAdapter.isOffloadedScanBatchingSupported());
 
-        if (mBluetoothAdapter.isEnabled()) {
-
-            mAdvertister = mBluetoothAdapter.getBluetoothLeAdvertiser();
-            if (mAdvertister == null) {
-                Log.i(TAG, "No BLE advertiser available");
-            }
-
-        } else {
-
-            // TODO: Prompt user to turn on Bluetooth (logic continues in onActivityResult()).
-            //Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-            //startActivityForResult(enableBtIntent, SyncStateContract.Constants.REQUEST_ENABLE_BT);
-        }
-
-        mServices = new ArrayList<>();
-
+//        if (!mBluetoothAdapter.isEnabled()) {
+//            // Prompt user to turn on Bluetooth (logic continues in onActivityResult()).
+//            log("Bluetooth is not enabled");
+//            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+//            mContext.startActivityForResult(enableBtIntent, 1);
+//        }
     }
+
+    private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final String action = intent.getAction();
+            if (action.equals(BluetoothAdapter.ACTION_STATE_CHANGED)) {
+                final int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,
+                        BluetoothAdapter.ERROR);
+                // FIXME: if bluetooth state changed (on/off), what we should do?
+                log("Bluetooth state changed: " + ClosebyHelper.state2String(state));
+            }
+        }
+    };
 
     public boolean isAdvertisementSupported() {
         return (mAdvertister != null);
     }
 
     public void addAdvertiseService(ClosebyService service) {
-        if (mAdvertister == null) {
-            Log.d(TAG, "No BLE advertiser available, ignore advertise service");
+//        if (mAdvertister == null) {
+//            Log.d(TAG, "No BLE advertiser available, ignore advertise service");
+//            return;
+//        }
+        mAdvertisementServices.add(service);
+    }
+
+    private final AdvertiseCallback mAdvertiseCallback = new AdvertiseCallback() {
+        public void onStartSuccess(AdvertiseSettings settingsInEffect) {
+            log("Successfully started advertising");
+            setupGattService();
+        }
+
+        public void onStartFailure(int errorCode) {
+            log("Could not start advertising: " + ClosebyHelper.advertiserCode2String(errorCode));
+        }
+    };
+
+
+    private BluetoothGattService getService() {
+        BluetoothGattService service = new BluetoothGattService(mAdvertisementServices.get(0).mServiceUuid,
+                BluetoothGattService.SERVICE_TYPE_PRIMARY);
+
+        for (Map.Entry<UUID, byte[]> entry : mAdvertisementServices.get(0).getProperties().entrySet()) {
+            BluetoothGattCharacteristic c = new BluetoothGattCharacteristic(entry.getKey(),
+                    BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ );
+            service.addCharacteristic(c);
+        }
+
+        return service;
+    }
+
+    public void connect(String deviceAddress) {
+        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(deviceAddress)    ;
+        if (device != null) {
+            device.connectGatt(mContext, false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
+        }
+    }
+
+    private final ScanCallback mScanCallback = new ScanCallback() {
+        @Override
+        public void onScanFailed(int errorCode) {
+            log("Discovery failed: " + ClosebyHelper.scanCode2String(errorCode));
+            super.onScanFailed(errorCode);
+        }
+
+        @Override
+        public void onScanResult(int callbackType, ScanResult result) {
+            final BluetoothDevice device = result.getDevice();
+            if (device != null) {
+                if (!mResults.contains(device.getAddress())) {
+                    Log.d(TAG, "Callbacktype(1:all, 2:first, 4:lsot): " + callbackType);
+                    mDiscoveryListener.onNewDevice(result.getScanRecord().getDeviceName(), device.getAddress());
+                    Log.d(TAG, "RSSI: " + result.getRssi()
+                            + "\ndevicename: " + result.getScanRecord().getDeviceName());
+                    if (result.getScanRecord() != null) {
+                        Log.d(TAG, "\nrecord: " + result.getScanRecord().toString());
+                    }
+                    if (result.getScanRecord().getServiceUuids().size() > 0) {
+                        Log.d(TAG, "\nservices: " + result.getScanRecord().getServiceUuids().toString());
+                    }
+                    mResults.add(device.getAddress());
+                    Log.i(TAG, "Device found " + device.getAddress());
+                    //|| device.getAddress().equals("90:68:C3:B8:30:52"))
+//                    if (device.getAddress().equals("90:68:C3:B8:2B:B9")) {
+//                        Log.i(TAG, "Connectiong to " + device.getAddress());
+//                        device.connectGatt(mContext, false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
+//                    }
+                }
+            }
+        }
+
+        @Override
+        public void onBatchScanResults(List<ScanResult> results) {
+            for (int i = 0; i < results.size(); i++) {
+                Log.i(TAG, "Device found " + i + ": " + results.get(i).getDevice().getAddress());
+            }
+        }
+    };
+
+    private TextView mLogger;
+    public void setLogger(TextView logger) {
+        mLogger = logger;
+    }
+
+    private void log(final String msg) {
+        Log.d(TAG, msg);
+        if (mLogger != null) {
+            mContext.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    mLogger.append("\n" + msg);
+                }
+            });
+        }
+    }
+
+    private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
+        @Override
+        public void onConnectionStateChange(final BluetoothGatt gatt, int status, int newState) {
+            log("GattCallback:onConnectionStateChange: [" + gatt.getDevice().getAddress() + "] status " + ClosebyHelper.status2String(status)
+                    + ", state " + ClosebyHelper.connectionState2String(newState));
+
+            super.onConnectionStateChange(gatt, status, newState);
+
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                boolean ok = gatt.discoverServices();
+                log("discoverServices " + ok);
+                return;
+            }
+
+            gatt.close();
             return;
         }
 
-        Log.v(TAG, "Add service: " + service.toString());
-        mServices.add(service);
+        @Override
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            super.onServicesDiscovered(gatt, status);
+            log("GattCallback:onServicesDiscovered: [" + gatt.getDevice().getAddress() + "] status " + status);
+
+            boolean found = false;
+            for (BluetoothGattService service : gatt.getServices()) {
+                log("  " + service.getUuid());
+                for (int i = 0; i < mDiscoveryServices.size(); ++i) {
+                    if (service.getUuid().equals(mDiscoveryServices.get(i))) {
+                        for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
+                            boolean ok = gatt.readCharacteristic(characteristic);
+                            log("Read " + characteristic.getUuid().toString() + ": " + Boolean.toString(ok));
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found) {
+                gatt.close();
+            }
+        }
+
+        @Override
+        public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
+            super.onCharacteristicRead(gatt, characteristic, status);
+            log("GattCallback:onCharacteristicRead: [" + gatt.getDevice().getAddress() + "] status: " + status + ", value: " + new String(characteristic.getValue()));
+
+            // FIXME, should wait all characteristics done. or read characteristics one by one.
+            gatt.close();
+        }
+    };
+
+    private ArrayList<String> mResults;
+    private final Handler mHandler = new Handler();
+    private static int SCAN_PERIOD = 5000;
+
+
+    private final BluetoothGattServerCallback mBluetoothGattServerCallback = new BluetoothGattServerCallback() {
+        @Override
+        public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
+            log("BluetoothGattServerCallback:onConnectionStateChange: [" + device.getAddress() + "] status: " + status + ", state: " + ClosebyHelper.connectionState2String(newState));
+            super.onConnectionStateChange(device, status, newState);
+        }
+
+        @Override
+        public void onMtuChanged(BluetoothDevice device, int mtu) {
+            log("BluetoothGattServerCallback:onMtuChanged: [" + device.getAddress() + "] MTU changed to " + mtu);
+            super.onMtuChanged(device, mtu);
+        }
+
+        @Override
+        public void onCharacteristicReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattCharacteristic characteristic) {
+            log("BluetoothGattServerCallback:onCharacteristicReadRequest: [" + device.getAddress() + "] characteristic " + characteristic.getUuid().toString() + ", offset " + Integer.toString(offset));
+            boolean done = false;
+            for (Map.Entry<UUID, byte[]> entry : mAdvertisementServices.get(0).getProperties().entrySet()) {
+                if (characteristic.getUuid() == entry.getKey()) {
+                    mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, entry.getValue());
+                    done = true;
+                    break;
+                }
+            }
+
+            if (!done) {
+                super.onCharacteristicReadRequest(device, requestId, offset, characteristic);
+            }
+        }
+
+        @Override
+        public void onCharacteristicWriteRequest(BluetoothDevice device, int requestId, BluetoothGattCharacteristic characteristic, boolean preparedWrite, boolean responseNeeded, int offset, byte[] value) {
+            log("BluetoothGattServerCallback:onCharacteristicWriteRequest: [" + device.getAddress() + "] characteristic " + characteristic.getUuid().toString() + ", offset " + Integer.toString(offset) + ", preparedWrite: " + preparedWrite + ", responseNeeded " + responseNeeded );
+            super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value);
+        }
+
+        @Override
+        public void onServiceAdded(int status, BluetoothGattService service) {
+            log("BluetoothGattServerCallback:onServiceAdded: status: " + status + ", service: " + service.getUuid());
+            super.onServiceAdded(status, service);
+        }
+
+        @Override
+        public void onDescriptorReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattDescriptor descriptor) {
+            log("BluetoothGattServerCallback:onDescriptorReadRequest: [" + device.getAddress() + "] requestId: " + requestId + ", descriptor " + descriptor.getUuid() + ", offset " + offset);
+            super.onDescriptorReadRequest(device, requestId, offset, descriptor);
+        }
+
+        @Override
+        public void onDescriptorWriteRequest(BluetoothDevice device, int requestId, BluetoothGattDescriptor descriptor, boolean preparedWrite, boolean responseNeeded, int offset, byte[] value) {
+            log("BluetoothGattServerCallback:onDescriptorWriteRequest: [" + device.getAddress() + "] requestId: " + requestId + ", descriptor " + descriptor.getUuid() + ", offset " + offset + ", preparedWrite: " + preparedWrite + ", responseNeeded " + responseNeeded );
+            super.onDescriptorWriteRequest(device, requestId, descriptor, preparedWrite, responseNeeded, offset, value);
+        }
+
+        @Override
+        public void onExecuteWrite(BluetoothDevice device, int requestId, boolean execute) {
+            log("BluetoothGattServerCallback:onExecuteWrite: [" + device.getAddress() + "] requestId: " + requestId + ", execute: " + execute);
+            super.onExecuteWrite(device, requestId, execute);
+        }
+
+        @Override
+        public void onNotificationSent(BluetoothDevice device, int status) {
+            log("onNotificationSent: [" + device.getAddress() + "], status: " + status);
+            super.onNotificationSent(device, status);
+        }
+    };
+
+    private void setupGattService()
+    {
+        mGattServer = mManager.openGattServer(mContext, mBluetoothGattServerCallback);
+
+        boolean done = false;
+        do {
+            done = mGattServer.addService(getService());
+            if (!done) {
+                mGattServer.removeService(getService());
+                log("add service to GattServer failed. remove it and try again.");
+            }
+        } while (!done);
     }
 
     public boolean startAdvertising() {
+        if (!mBluetoothAdapter.isEnabled()) {
+            log("Bluetooth is not enabled");
+//            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+//            mContext.startActivityForResult(enableBtIntent, 1);
+            return false;
+        }
+
+        mAdvertister = mBluetoothAdapter.getBluetoothLeAdvertiser();
         if (mAdvertister == null) {
-            Log.d(TAG, "No BLE advertiser available, ignore advertise service");
+            log("No BLE advertiser available");
             return false;
         }
 
-        if (mServices.isEmpty()) {
-            Log.d(TAG, "No service to advertise, please addAdvertiseService first.");
+        if (mAdvertisementServices.isEmpty()) {
+            log("No service to advertise, please addAdvertiseService first.");
             return false;
         }
 
-        Log.d(TAG, "advertise service: " + mServices.get(0).mServiceUuid.toString());
+        log("advertise services:");
+        for (int i = 0; i < mAdvertisementServices.size(); ++i) {
+            log(" " + i + ": " + mAdvertisementServices.get(i));
+        }
+
         AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder();
-
-        dataBuilder.addServiceUuid(ParcelUuid.fromString(mServices.get(0).mServiceUuid.toString()));
+        dataBuilder.addServiceUuid(ParcelUuid.fromString(mAdvertisementServices.get(0).mServiceUuid.toString()));
         dataBuilder.setIncludeDeviceName(true);
         AdvertiseData advertiseData = dataBuilder.build();
-
         AdvertiseSettings advertiseSettings = new AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
                 .setConnectable(true)
                 .setTimeout(0)
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH).build();
 
-        mAdvertister.startAdvertising(advertiseSettings, advertiseData, new AdvertiseCallback() {
-            public void onStartSuccess(AdvertiseSettings settingsInEffect) {
-                Log.i(TAG, "succesfully started advertising");
-            }
-
-            public void onStartFailure(int errorCode) {
-                Log.e(TAG, "could not start advertising..." + Integer.toString(errorCode));
-            }
-        });
-
+        mAdvertister.startAdvertising(advertiseSettings, advertiseData, mAdvertiseCallback);
         return true;
     }
 
     public void stopAdvertising() {
+        mAdvertisementServices.clear();
 
+        if (!mBluetoothAdapter.isEnabled()) {
+            return;
+        }
+
+        if (mAdvertister != null) {
+            log("Stop advertising");
+            mAdvertister.stopAdvertising(mAdvertiseCallback);
+            mAdvertister = null;
+        }
+
+        if (mGattServer != null) {
+            mGattServer.close();
+            mGattServer = null;
+        }
     }
 
-    public void startDiscovering() {
+    private ArrayList<UUID> mDiscoveryServices;
+    public boolean startDiscovering(ArrayList<UUID> services) {
+        // cleanup previous results.
+        mResults.clear();
+        mDiscoveryServices = services;
 
+        if (mDiscoveryListener != null) {
+            mDiscoveryListener.onReset();
+        }
+
+        if (!mBluetoothAdapter.isEnabled()) {
+            log("Bluetooth is not enabled");
+//            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+//            mContext.startActivityForResult(enableBtIntent, 1);
+            return false;
+        }
+
+        mScanner = mBluetoothAdapter.getBluetoothLeScanner();
+        ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build();
+        List<ScanFilter> filters = new ArrayList<ScanFilter>();
+
+        if (!services.isEmpty()) {
+            log("Try to discover services:");
+        }
+
+        for (int i = 0; i < services.size(); i++) {
+            ScanFilter filter = new ScanFilter.Builder().setServiceUuid(new ParcelUuid(services.get(i))).build();
+            filters.add(filter);
+            log("  " + services.get(i));
+        }
+
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                stopDiscovering();
+            }
+        }, SCAN_PERIOD);
+
+        mScanner.startScan(filters, settings, mScanCallback);
+        log("Start discovering...");
+        return true;
     }
 
     public void stopDiscovering() {
+        if (!mBluetoothAdapter.isEnabled()) {
+            return;
+        }
 
+        if (mScanner != null) {
+            mScanner.stopScan(mScanCallback);
+            log("Discovery stopped.");
+        }
     }
 
     public boolean sendDataToPeer(ClosebyPeer peer, Byte[] bytes) {
@@ -163,7 +498,7 @@ public class Closeby {
     }
 
     public void addDiscoveryListener(ClosebyDiscoveryListener listener) {
-
+        mDiscoveryListener = listener;
     }
 
     public void removeDiscoveryListener(ClosebyDiscoveryListener listener) {
