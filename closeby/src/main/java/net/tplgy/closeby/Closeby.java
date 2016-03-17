@@ -30,7 +30,9 @@ import android.os.ParcelUuid;
 import android.util.Log;
 import android.widget.TextView;
 
+import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -97,18 +99,6 @@ public class Closeby {
             log("Bluetooth is not supported on this device.");
             return;
         }
-
-        log("Bluetooth state:"
-                + "\n   Address: " + mBluetoothAdapter.getAddress()
-                + "\n   State: " + ClosebyHelper.state2String(mBluetoothAdapter.getState())
-                + "\n   Scan-mode: " + ClosebyHelper.scanMode2String(mBluetoothAdapter.getScanMode())
-                + "\n   Enabled: " + mBluetoothAdapter.isEnabled()
-                + "\n   Name:" + mBluetoothAdapter.getName()
-                + "\n   Discovering: " + mBluetoothAdapter.isDiscovering()
-                + "\n   MultipleAdvertisementSupport: " + mBluetoothAdapter.isMultipleAdvertisementSupported()
-                + "\n   OffloadedFilteringSupport: " + mBluetoothAdapter.isOffloadedFilteringSupported()
-                + "\n   OffloadedScanBatchingSupport: " + mBluetoothAdapter.isOffloadedScanBatchingSupported());
-
 //        if (!mBluetoothAdapter.isEnabled()) {
 //            // Prompt user to turn on Bluetooth (logic continues in onActivityResult()).
 //            log("Bluetooth is not enabled");
@@ -170,6 +160,7 @@ public class Closeby {
     public void connect(String deviceAddress) {
         BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(deviceAddress)    ;
         if (device != null) {
+            log("connect to " + device.getAddress());
             device.connectGatt(mContext, false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
         }
     }
@@ -218,6 +209,17 @@ public class Closeby {
     private TextView mLogger;
     public void setLogger(TextView logger) {
         mLogger = logger;
+
+        log("Bluetooth state:");
+        log("   Address: " + mBluetoothAdapter.getAddress());
+        log("   State: " + ClosebyHelper.state2String(mBluetoothAdapter.getState()));
+        log("   Scan-mode: " + ClosebyHelper.scanMode2String(mBluetoothAdapter.getScanMode()));
+        log("   Enabled: " + mBluetoothAdapter.isEnabled());
+        log("   Name:" + mBluetoothAdapter.getName());
+        log("   Discovering: " + mBluetoothAdapter.isDiscovering());
+        log("   MultipleAdvertisementSupport: " + mBluetoothAdapter.isMultipleAdvertisementSupported());
+        log("   OffloadedFilteringSupport: " + mBluetoothAdapter.isOffloadedFilteringSupported());
+        log("   OffloadedScanBatchingSupport: " + mBluetoothAdapter.isOffloadedScanBatchingSupported());
     }
 
     private void log(final String msg) {
@@ -226,7 +228,7 @@ public class Closeby {
             mContext.runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    mLogger.append("\n" + msg);
+                    mLogger.append("\n" + DateFormat.getTimeInstance().format(Calendar.getInstance().getTime()) + " " + msg);
                 }
             });
         }
@@ -239,38 +241,35 @@ public class Closeby {
                     + ", state " + ClosebyHelper.connectionState2String(newState));
 
             super.onConnectionStateChange(gatt, status, newState);
-
+            final int MTU = 158;
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                boolean ok = gatt.discoverServices();
-                log("discoverServices " + ok);
+                boolean ok = gatt.requestMtu(MTU);
+                log("requestMtu to " + MTU + " " + ok);
                 return;
             }
 
-            gatt.close();
+            //gatt.close();
             return;
         }
 
+        public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
+            log("GattCallback:onMtuChanged: [" + gatt.getDevice().getAddress() + "] status " + status + ", mtu " + mtu);
+            super.onMtuChanged(gatt, mtu, status);
+            boolean ok = gatt.discoverServices();
+            log("discoverServices " + ok);
+        }
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             super.onServicesDiscovered(gatt, status);
             log("GattCallback:onServicesDiscovered: [" + gatt.getDevice().getAddress() + "] status " + status);
 
-            boolean found = false;
-            for (BluetoothGattService service : gatt.getServices()) {
-                log("  " + service.getUuid());
-                for (int i = 0; i < mDiscoveryServices.size(); ++i) {
-                    if (service.getUuid().equals(mDiscoveryServices.get(i))) {
-                        for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
-                            boolean ok = gatt.readCharacteristic(characteristic);
-                            log("Read " + characteristic.getUuid().toString() + ": " + Boolean.toString(ok));
-                        }
-                        found = true;
-                        break;
-                    }
+            BluetoothGattService service = gatt.getService(mDiscoveryServices.get(0));
+            if (service != null) {
+                for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
+                    boolean ok = gatt.readCharacteristic(characteristic);
+                    log("Read " + characteristic.getUuid().toString() + ": " + Boolean.toString(ok));
                 }
-            }
-
-            if (!found) {
+            } else {
                 gatt.close();
             }
         }
@@ -281,13 +280,13 @@ public class Closeby {
             log("GattCallback:onCharacteristicRead: [" + gatt.getDevice().getAddress() + "] status: " + status + ", value: " + new String(characteristic.getValue()));
 
             // FIXME, should wait all characteristics done. or read characteristics one by one.
-            gatt.close();
+            //gatt.close();
         }
     };
 
     private ArrayList<String> mResults;
     private final Handler mHandler = new Handler();
-    private static int SCAN_PERIOD = 5000;
+    private static int SCAN_PERIOD = 10000;
 
 
     private final BluetoothGattServerCallback mBluetoothGattServerCallback = new BluetoothGattServerCallback() {

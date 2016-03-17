@@ -54,7 +54,7 @@ public class ClosebyHelper {
             return descriptions.get(state);
         }
 
-        return UNKNOWN;
+        return Integer.toString(state);
     }
 
     static public String state2String(int state) {

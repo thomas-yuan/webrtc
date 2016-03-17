@@ -27,7 +27,7 @@ import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryListener {
 
-    private final static String SERVICE_UUID = "11111111-2222-3333-4444-555555555555";
+    private final static String SERVICE_UUID = "00001111-0000-1000-8000-00805f9b34fb";
     private final static String NAME_UUID = "11111111-2222-3333-4444-666666666666";
     private ArrayList<String> mDevices;
     private StableArrayAdapter mAdapter;
@@ -60,7 +60,6 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
         central.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                textview.append("\nCENTRAL button clicked.");
                 mCloseby.stopDiscovering();
 
                 ArrayList<UUID> services = new ArrayList<UUID>();
@@ -73,7 +72,6 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
         peripheral.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                textview.append("\nPERIPHERAL button clicked.");
                 final EditText value = (EditText) findViewById(R.id.editText);
                 mCloseby.stopAdvertising();
 
@@ -90,7 +88,6 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
             public void onItemClick(AdapterView<?> parent, final View view,
                                     int position, long id) {
                 final String item = (String) parent.getItemAtPosition(position);
-                textview.append("\nConnect to device " + item);
                 mCloseby.connect(item);
             }
         });
