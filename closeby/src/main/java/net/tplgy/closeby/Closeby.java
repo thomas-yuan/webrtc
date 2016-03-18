@@ -21,10 +21,7 @@ import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.ParcelUuid;
 import android.util.Log;
@@ -55,7 +52,7 @@ public class Closeby {
     private static final Object mLock = new Object();
 
     private static Closeby mInstance;
-    private Activity mContext;
+    private Context mContext;
     private BluetoothManager mManager;
     private BluetoothAdapter mBluetoothAdapter;
     private BluetoothGattServer mGattServer;
@@ -63,24 +60,19 @@ public class Closeby {
     private BluetoothLeScanner mScanner;
 
     private ClosebyDiscoveryListener mDiscoveryListener;
-    ArrayList<ClosebyService> mAdvertisementServices;
+    ClosebyService mAdvertisementService;
 
-    public static Closeby getInstance(Activity context) {
-
+    public static Closeby getInstance(Context context) {
+        // Do we really need this synchronized?
         synchronized(mLock) {
             if (mInstance == null) {
-                mInstance = new Closeby(context);
+                try {
+                    mInstance = new Closeby(context);
+                } catch (Exception e) {
+                    Log.e(TAG, e.toString());
+                }
             }
         }
-
-        // BLUETOOTH is not supported on this device.
-        if (mInstance.mBluetoothAdapter == null) {
-            return null;
-        }
-
-        // Register for broadcasts on BluetoothAdapter state change
-        IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
-        context.registerReceiver(mInstance.mReceiver, filter);
 
         return mInstance;
     }
@@ -89,47 +81,18 @@ public class Closeby {
         return mBluetoothAdapter.isEnabled();
     }
 
-    private Closeby(Activity context) {
+    private Closeby(Context context) throws Exception {
         mContext = context;
-        mAdvertisementServices = new ArrayList<>();
         mResults = new ArrayList<>();
         mManager = (BluetoothManager)mContext.getSystemService(Context.BLUETOOTH_SERVICE);
         mBluetoothAdapter = mManager.getAdapter();
         if (mBluetoothAdapter == null) {
-            log("Bluetooth is not supported on this device.");
-            return;
+            throw new Exception("Bluetooth is not supported on this device.");
         }
-//        if (!mBluetoothAdapter.isEnabled()) {
-//            // Prompt user to turn on Bluetooth (logic continues in onActivityResult()).
-//            log("Bluetooth is not enabled");
-//            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-//            mContext.startActivityForResult(enableBtIntent, 1);
-//        }
     }
 
-    private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
-            if (action.equals(BluetoothAdapter.ACTION_STATE_CHANGED)) {
-                final int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,
-                        BluetoothAdapter.ERROR);
-                // FIXME: if bluetooth state changed (on/off), what we should do?
-                log("Bluetooth state changed: " + ClosebyHelper.state2String(state));
-            }
-        }
-    };
-
-    public boolean isAdvertisementSupported() {
-        return (mAdvertister != null);
-    }
-
-    public void addAdvertiseService(ClosebyService service) {
-//        if (mAdvertister == null) {
-//            Log.d(TAG, "No BLE advertiser available, ignore advertise service");
-//            return;
-//        }
-        mAdvertisementServices.add(service);
+    public void setAdvertiseService(ClosebyService service) {
+        mAdvertisementService = service;
     }
 
     private final AdvertiseCallback mAdvertiseCallback = new AdvertiseCallback() {
@@ -145,10 +108,10 @@ public class Closeby {
 
 
     private BluetoothGattService getService() {
-        BluetoothGattService service = new BluetoothGattService(mAdvertisementServices.get(0).mServiceUuid,
+        BluetoothGattService service = new BluetoothGattService(mAdvertisementService.mServiceUuid,
                 BluetoothGattService.SERVICE_TYPE_PRIMARY);
 
-        for (Map.Entry<UUID, byte[]> entry : mAdvertisementServices.get(0).getProperties().entrySet()) {
+        for (Map.Entry<UUID, byte[]> entry : mAdvertisementService.getProperties().entrySet()) {
             BluetoothGattCharacteristic c = new BluetoothGattCharacteristic(entry.getKey(),
                     BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ );
             service.addCharacteristic(c);
@@ -177,23 +140,13 @@ public class Closeby {
             final BluetoothDevice device = result.getDevice();
             if (device != null) {
                 if (!mResults.contains(device.getAddress())) {
-                    Log.d(TAG, "Callbacktype(1:all, 2:first, 4:lsot): " + callbackType);
                     mDiscoveryListener.onNewDevice(result.getScanRecord().getDeviceName(), device.getAddress());
-                    Log.d(TAG, "RSSI: " + result.getRssi()
-                            + "\ndevicename: " + result.getScanRecord().getDeviceName());
-                    if (result.getScanRecord() != null) {
-                        Log.d(TAG, "\nrecord: " + result.getScanRecord().toString());
-                    }
-                    if (result.getScanRecord().getServiceUuids().size() > 0) {
-                        Log.d(TAG, "\nservices: " + result.getScanRecord().getServiceUuids().toString());
+                    log("Found " + result.getDevice().getAddress() + " RSSI: " + result.getRssi()
+                            + ", devicename: " + result.getScanRecord().getDeviceName());
+                    if (result.getScanRecord() != null && result.getScanRecord().getServiceData(ParcelUuid.fromString(mDiscoveryServices.get(0).toString())) != null) {
+                        log("service data: " + byteArrayToHexString(result.getScanRecord().getServiceData(ParcelUuid.fromString(mDiscoveryServices.get(0).toString()))));
                     }
                     mResults.add(device.getAddress());
-                    Log.i(TAG, "Device found " + device.getAddress());
-                    //|| device.getAddress().equals("90:68:C3:B8:30:52"))
-//                    if (device.getAddress().equals("90:68:C3:B8:2B:B9")) {
-//                        Log.i(TAG, "Connectiong to " + device.getAddress());
-//                        device.connectGatt(mContext, false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
-//                    }
                 }
             }
         }
@@ -225,7 +178,7 @@ public class Closeby {
     private void log(final String msg) {
         Log.d(TAG, msg);
         if (mLogger != null) {
-            mContext.runOnUiThread(new Runnable() {
+            ((Activity)mContext).runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
                     mLogger.append("\n" + DateFormat.getTimeInstance().format(Calendar.getInstance().getTime()) + " " + msg);
@@ -306,7 +259,7 @@ public class Closeby {
         public void onCharacteristicReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattCharacteristic characteristic) {
             log("BluetoothGattServerCallback:onCharacteristicReadRequest: [" + device.getAddress() + "] characteristic " + characteristic.getUuid().toString() + ", offset " + Integer.toString(offset));
             boolean done = false;
-            for (Map.Entry<UUID, byte[]> entry : mAdvertisementServices.get(0).getProperties().entrySet()) {
+            for (Map.Entry<UUID, byte[]> entry : mAdvertisementService.getProperties().entrySet()) {
                 if (characteristic.getUuid() == entry.getKey()) {
                     mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, entry.getValue());
                     done = true;
@@ -373,8 +326,6 @@ public class Closeby {
     public boolean startAdvertising() {
         if (!mBluetoothAdapter.isEnabled()) {
             log("Bluetooth is not enabled");
-//            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-//            mContext.startActivityForResult(enableBtIntent, 1);
             return false;
         }
 
@@ -384,32 +335,54 @@ public class Closeby {
             return false;
         }
 
-        if (mAdvertisementServices.isEmpty()) {
-            log("No service to advertise, please addAdvertiseService first.");
+        if (mAdvertisementService == null) {
+            log("No service to advertise, please setAdvertiseService.");
             return false;
         }
 
-        log("advertise services:");
-        for (int i = 0; i < mAdvertisementServices.size(); ++i) {
-            log(" " + i + ": " + mAdvertisementServices.get(i));
-        }
+        log("advertise service " + mAdvertisementService);
 
         AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder();
-        dataBuilder.addServiceUuid(ParcelUuid.fromString(mAdvertisementServices.get(0).mServiceUuid.toString()));
-        dataBuilder.setIncludeDeviceName(true);
+        dataBuilder.addServiceUuid(ParcelUuid.fromString(mAdvertisementService.mServiceUuid.toString()));
+        if (mAdvertisementService.hasData()) {
+            mBluetoothAdapter.setName(new String(mAdvertisementService.mServiceData));
+            dataBuilder.setIncludeDeviceName(true);
+        }
+
         AdvertiseData advertiseData = dataBuilder.build();
+        log("AdvertiseData: ");
+        for (Map.Entry<ParcelUuid, byte[]> e : advertiseData.getServiceData().entrySet()) {
+            log("Key: " + e.getKey().getUuid().toString() + ", value: " + byteArrayToHexString(e.getValue()));
+        }
+
         AdvertiseSettings advertiseSettings = new AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
                 .setConnectable(true)
-                .setTimeout(0)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH).build();
+                .setTimeout(0).build();
 
         mAdvertister.startAdvertising(advertiseSettings, advertiseData, mAdvertiseCallback);
+
         return true;
     }
+    public static String byteArrayToHexString(byte[] bytes) {
+        final char[] hexArray = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+        char[] hexChars = new char[bytes.length*2];
+        int v;
 
+        if (bytes == null) {
+            return "null";
+        }
+
+        for(int j=0; j < bytes.length; j++) {
+            v = bytes[j] & 0xFF;
+            hexChars[j*2] = hexArray[v>>>4];
+            hexChars[j*2 + 1] = hexArray[v & 0x0F];
+        }
+
+        return new String(hexChars);
+    }
     public void stopAdvertising() {
-        mAdvertisementServices.clear();
+        mAdvertisementService = null;
 
         if (!mBluetoothAdapter.isEnabled()) {
             return;

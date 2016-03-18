@@ -27,7 +27,7 @@ import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryListener {
 
-    private final static String SERVICE_UUID = "00001111-0000-1000-8000-00805f9b34fb";
+    private final static String SERVICE_UUID = "0000546f-0000-1000-8000-00805f9b34fb";
     private final static String NAME_UUID = "11111111-2222-3333-4444-666666666666";
     private ArrayList<String> mDevices;
     private StableArrayAdapter mAdapter;
@@ -77,7 +77,8 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
 
                 ClosebyService s = new ClosebyService(UUID.fromString(SERVICE_UUID));
                 s.addProperty(UUID.fromString(NAME_UUID), value.getText().toString().getBytes());
-                mCloseby.addAdvertiseService(s);
+                s.setServiceData("Topology".getBytes());
+                mCloseby.setAdvertiseService(s);
                 mCloseby.startAdvertising();
             }
         });

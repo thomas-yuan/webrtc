@@ -10,12 +10,13 @@ import java.util.UUID;
  * Created by thomas on 2016-03-11.
  */
 public class ClosebyService {
-
+    private final static String SERVICE_UUID = "0000546f-0000-1000-8000-00805f9b34fb";
     private static final String TAG = "ClosebyService";
     private static final Integer BLE_ATTR_MAX_LENGTH = 512;
 
     UUID mServiceUuid;
-    Map<UUID, byte[]> mProperties;
+    byte[] mServiceData;
+    Map<UUID, byte[]> mProperties = new HashMap<>();
 
     @Override
     public String toString() {
@@ -31,7 +32,25 @@ public class ClosebyService {
 
     public ClosebyService(UUID serviceUuid) {
         this.mServiceUuid = serviceUuid;
-        mProperties = new HashMap<>();
+    }
+
+    public boolean hasData() {
+        return (mServiceData != null);
+    }
+
+    public boolean setServiceData(byte[] data) {
+        int MAX_SERVICE_DATA_LENGTH = 8;
+        if (mServiceUuid.toString().equals(SERVICE_UUID)) {
+            // we are using 16bit UUID, so we saved (128 - 16)bit = 14 bytes.
+            MAX_SERVICE_DATA_LENGTH = 22;
+        }
+
+        if (data.length > MAX_SERVICE_DATA_LENGTH) {
+            return false;
+        }
+
+        mServiceData = data;
+        return true;
     }
 
     public boolean addProperty(UUID key, byte[] value) {
