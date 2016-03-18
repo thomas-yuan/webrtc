@@ -1,5 +1,6 @@
 package net.tplgy.webrtc;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.provider.SyncStateContract;
@@ -18,14 +19,17 @@ import android.widget.Toast;
 
 import net.tplgy.closeby.Closeby;
 import net.tplgy.closeby.ClosebyDiscoveryListener;
+import net.tplgy.closeby.ClosebyLogger;
 import net.tplgy.closeby.ClosebyService;
 
+import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 
-public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryListener {
+public class MainActivity extends AppCompatActivity {
 
     private final static String SERVICE_UUID = "0000546f-0000-1000-8000-00805f9b34fb";
     private final static String NAME_UUID = "11111111-2222-3333-4444-666666666666";
@@ -33,6 +37,7 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
     private StableArrayAdapter mAdapter;
 
     Closeby mCloseby;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,8 +53,17 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
             return;
         }
 
-        mCloseby.addDiscoveryListener(this);
-        mCloseby.setLogger(textview);
+        mCloseby.setLogger(new ClosebyLogger() {
+            @Override
+            public void log(final String logs) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        textview.append("\n" + logs);
+                    }
+                });
+            }
+        });
 
         final ListView listview = (ListView) findViewById(R.id.listView);
         mDevices = new ArrayList<String>();
@@ -61,10 +75,16 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
             @Override
             public void onClick(View v) {
                 mCloseby.stopDiscovering();
+                reset();
+                mCloseby.startDiscovering(UUID.fromString(SERVICE_UUID), new ClosebyDiscoveryListener() {
+                    @Override
 
-                ArrayList<UUID> services = new ArrayList<UUID>();
-                services.add(UUID.fromString(SERVICE_UUID));
-                mCloseby.startDiscovering(services);
+                    public void onNewDevice(String deviceName, String deviceAddress) {
+                        mDevices.add(deviceAddress);
+                        mAdapter.mIdMap.put(deviceAddress, mDevices.size());
+                        mAdapter.notifyDataSetChanged();
+                    }
+                });
             }
         });
 
@@ -77,12 +97,10 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
 
                 ClosebyService s = new ClosebyService(UUID.fromString(SERVICE_UUID));
                 s.addProperty(UUID.fromString(NAME_UUID), value.getText().toString().getBytes());
-                s.setServiceData("Topology".getBytes());
-                mCloseby.setAdvertiseService(s);
-                mCloseby.startAdvertising();
+                s.setServiceData("Topology S6".getBytes());
+                mCloseby.startAdvertising(s);
             }
         });
-
 
         listview.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
@@ -104,22 +122,13 @@ public class MainActivity extends AppCompatActivity implements ClosebyDiscoveryL
         super.onDestroy();
     }
 
-    public void onNewDevice(String deviceName, String deviceAddress) {
-        mDevices.add(deviceAddress);
-        mAdapter.mIdMap.put(deviceAddress, mDevices.size());
-        mAdapter.notifyDataSetChanged();
-    }
-
-    public void onLost(String address) {
-        mAdapter.mIdMap.remove(address);
-    }
-
-    public void onReset() {
+    public void reset() {
         mDevices.clear();
         mAdapter.mIdMap.clear();
         //assert (mAdapter.mIdMap.size() == 0);
         mAdapter.notifyDataSetInvalidated();// .notifyDataSetChanged();
     }
+
     private class StableArrayAdapter extends ArrayAdapter<String> {
 
         HashMap<String, Integer> mIdMap = new HashMap<String, Integer>();

@@ -5,6 +5,4 @@ package net.tplgy.closeby;
  */
 public interface ClosebyDiscoveryListener {
     public void onNewDevice(String deviceName, String address);
-    public void onLost(String address);
-    public void onReset();
 }
