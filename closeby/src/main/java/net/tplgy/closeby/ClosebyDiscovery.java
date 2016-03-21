@@ -11,7 +11,9 @@ import android.os.Handler;
 import android.os.ParcelUuid;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -24,7 +26,7 @@ public class ClosebyDiscovery {
     private BluetoothLeScanner mScanner;
     private UUID mService;
     private ArrayList<ClosebyService> mDiscoveredServices = new ArrayList<ClosebyService>();
-    private ArrayList<String> mResults = new ArrayList<>();
+    private HashMap<String, ClosebyPeer> mResults = new HashMap<>();
     private final Handler mHandler = new Handler();
     private static int SCAN_PERIOD = 10000;
 
@@ -64,6 +66,10 @@ public class ClosebyDiscovery {
         return true;
     }
 
+    public ClosebyPeer getPeerbyAddress(String address) {
+        return mResults.get(address);
+    }
+
     private final ScanCallback mScanCallback = new ScanCallback() {
         @Override
         public void onScanFailed(int errorCode) {
@@ -79,10 +85,11 @@ public class ClosebyDiscovery {
                 return;
             }
 
-            if (!mResults.contains(device.getAddress())) {
-                mListener.onNewDevice(device.getName(), device.getAddress());
+            if (!mResults.containsKey(device.getAddress())) {
+                ClosebyPeer peer = new ClosebyPeer(mService, device.getAddress(), device.getName().getBytes(), result.getRssi(), mLogger);
+                mResults.put(device.getAddress(), peer);
+                mListener.onPeerFound(peer);
                 mLogger.log("Found [" + device.getAddress() + "] " + device.getName() + " RSSI: " + result.getRssi());
-                mResults.add(device.getAddress());
             }
         }
 

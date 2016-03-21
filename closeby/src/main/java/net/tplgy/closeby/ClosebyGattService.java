@@ -46,6 +46,13 @@ public class ClosebyGattService {
             s.addCharacteristic(c);
         }
 
+        // service has a listener, accept write
+        if (service.mListener != null) {
+            BluetoothGattCharacteristic c = new BluetoothGattCharacteristic(ClosebyConstant.DATA_UUID,
+                    BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE);
+            s.addCharacteristic(c);
+        }
+
         if (!mGattServer.addService(s)) {
             mLogger.log("Add service to GattServer failed.");
             return false;
@@ -89,7 +96,16 @@ public class ClosebyGattService {
         public void onCharacteristicWriteRequest(BluetoothDevice device, int requestId, BluetoothGattCharacteristic characteristic, boolean preparedWrite, boolean responseNeeded, int offset, byte[] value) {
             mLogger.log("BluetoothGattServerCallback:onCharacteristicWriteRequest: [" + device.getAddress() + "] characteristic " + characteristic.getUuid().toString() + ", offset " + Integer.toString(offset) + ", preparedWrite: " + preparedWrite + ", responseNeeded " + responseNeeded);
             // TODO.
-            super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value);
+            //super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value);
+
+            assert (characteristic.getUuid() == ClosebyConstant.DATA_UUID);
+            ClosebyPeer peer = new ClosebyPeer(mService.mServiceUuid, device.getAddress(), null, 0, mLogger);
+            mLogger.log("DATA received from " + device.getAddress() + ": " + new String(value));
+            mService.mListener.dataReceived(peer, value);
+            if (responseNeeded) {
+                mLogger.log("send write response");
+                mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);
+            }
         }
 
         @Override

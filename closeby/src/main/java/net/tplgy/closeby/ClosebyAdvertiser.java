@@ -70,4 +70,8 @@ public class ClosebyAdvertiser {
             mLogger.log("Could not start advertising: " + ClosebyHelper.advertiserCode2String(errorCode));
         }
     };
+
+    public ClosebyService getService() {
+        return mAdvertisementService;
+    }
 }

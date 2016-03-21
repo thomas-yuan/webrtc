@@ -5,6 +5,6 @@ package net.tplgy.closeby;
  */
 public interface ClosebyDataTransferListener {
 
-    void dataReceived(ClosebyPeer peer, Byte[] data);
+    void dataReceived(ClosebyPeer peer, byte[] data);
 
 }

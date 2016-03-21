@@ -1,12 +1,11 @@
 package net.tplgy.webrtc;
 
-import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
-import android.provider.SyncStateContract;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
@@ -15,16 +14,15 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import net.tplgy.closeby.Closeby;
+import net.tplgy.closeby.ClosebyDataTransferListener;
 import net.tplgy.closeby.ClosebyDiscoveryListener;
 import net.tplgy.closeby.ClosebyLogger;
+import net.tplgy.closeby.ClosebyPeer;
 import net.tplgy.closeby.ClosebyService;
 
-import java.text.DateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
@@ -32,8 +30,8 @@ import java.util.UUID;
 public class MainActivity extends AppCompatActivity {
 
     private final static String SERVICE_UUID = "0000546f-0000-1000-8000-00805f9b34fb";
-    private final static String NAME_UUID = "11111111-2222-3333-4444-666666666666";
-    private ArrayList<String> mDevices;
+    private final static String EMAIL_UUID = "11111111-2222-3333-4444-666666666666";
+    private ArrayList<ClosebyPeer> mPeers;
     private StableArrayAdapter mAdapter;
 
     Closeby mCloseby;
@@ -45,7 +43,16 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         final TextView textview = (TextView) findViewById(R.id.textView);
-        textview.setMovementMethod(new ScrollingMovementMethod());
+        assert (textview!=null);
+
+        final AlertDialog mDialog = new AlertDialog.Builder(this).setTitle("Error")
+                .setMessage("Please set username and email address before advertising")
+                .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        // continue with delete
+                    }
+                })
+                .setIcon(android.R.drawable.ic_dialog_alert).create();
 
         mCloseby = Closeby.getInstance(this);
         if (mCloseby == null) {
@@ -66,11 +73,13 @@ public class MainActivity extends AppCompatActivity {
         });
 
         final ListView listview = (ListView) findViewById(R.id.listView);
-        mDevices = new ArrayList<String>();
-        mAdapter = new StableArrayAdapter(this, android.R.layout.simple_list_item_1, mDevices);
+        assert (listview != null);
+        mPeers = new ArrayList<>();
+        mAdapter = new StableArrayAdapter(this, android.R.layout.simple_list_item_1, mPeers);
         listview.setAdapter(mAdapter);
 
         final Button central = (Button) findViewById(R.id.button2);
+        assert (central != null);
         central.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -79,9 +88,9 @@ public class MainActivity extends AppCompatActivity {
                 mCloseby.startDiscovering(UUID.fromString(SERVICE_UUID), new ClosebyDiscoveryListener() {
                     @Override
 
-                    public void onNewDevice(String deviceName, String deviceAddress) {
-                        mDevices.add(deviceAddress);
-                        mAdapter.mIdMap.put(deviceAddress, mDevices.size());
+                    public void onPeerFound(ClosebyPeer peer) {
+                        mPeers.add(peer);
+                        mAdapter.mIdMap.put(peer, mPeers.size());
                         mAdapter.notifyDataSetChanged();
                     }
                 });
@@ -89,15 +98,45 @@ public class MainActivity extends AppCompatActivity {
         });
 
         final Button peripheral = (Button) findViewById(R.id.button1);
+        assert (peripheral != null);
         peripheral.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                final EditText value = (EditText) findViewById(R.id.editText);
+
+                final EditText username = (EditText) findViewById(R.id.editText);
+                final EditText email = (EditText) findViewById(R.id.editText2);
+
+                if (username.getText().toString().isEmpty() || email.getText().toString().isEmpty()) {
+                    mDialog.show();
+                    return;
+                }
+
                 mCloseby.stopAdvertising();
 
                 ClosebyService s = new ClosebyService(UUID.fromString(SERVICE_UUID));
-                s.addProperty(UUID.fromString(NAME_UUID), value.getText().toString().getBytes());
-                s.setServiceData("Topology S6".getBytes());
+                s.addProperty(UUID.fromString(EMAIL_UUID), email.getText().toString().getBytes());
+                s.setServiceData(username.getText().toString().getBytes());
+                s.setDataTransferListener(new ClosebyDataTransferListener() {
+                    @Override
+                    public void dataReceived(final ClosebyPeer peer, final byte[] data) {
+
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+
+
+                                textview.append("message received from peer: " + peer.getAddress() + ": " + new String(data));
+
+                                Intent intentMain = new Intent(MainActivity.this ,
+                                        PeerActivity.class);
+                                intentMain.putExtra("CLOSEBY_PEER", peer.getAddress());
+                                intentMain.putExtra("MESSAGE", new String(data));
+                                MainActivity.this.startActivity(intentMain);
+                            }
+                        });
+                    }
+                });
+
                 mCloseby.startAdvertising(s);
             }
         });
@@ -106,8 +145,13 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onItemClick(AdapterView<?> parent, final View view,
                                     int position, long id) {
-                final String item = (String) parent.getItemAtPosition(position);
-                mCloseby.connect(item);
+                final ClosebyPeer item = (ClosebyPeer) parent.getItemAtPosition(position);
+
+                Intent intentMain = new Intent(MainActivity.this ,
+                        PeerActivity.class);
+                intentMain.putExtra("CLOSEBY_PEER", item.getAddress());
+                MainActivity.this.startActivity(intentMain);
+                Log.i("Content ", " Main layout ");
             }
         });
 
@@ -123,18 +167,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void reset() {
-        mDevices.clear();
+        mPeers.clear();
         mAdapter.mIdMap.clear();
         //assert (mAdapter.mIdMap.size() == 0);
         mAdapter.notifyDataSetInvalidated();// .notifyDataSetChanged();
     }
 
-    private class StableArrayAdapter extends ArrayAdapter<String> {
+    private class StableArrayAdapter extends ArrayAdapter<ClosebyPeer> {
 
-        HashMap<String, Integer> mIdMap = new HashMap<String, Integer>();
+        HashMap<ClosebyPeer, Integer> mIdMap = new HashMap<>();
 
         public StableArrayAdapter(Context context, int textViewResourceId,
-                                  List<String> objects) {
+                                  List<ClosebyPeer> objects) {
             super(context, textViewResourceId, objects);
             for (int i = 0; i < objects.size(); ++i) {
                 mIdMap.put(objects.get(i), i);
@@ -143,7 +187,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public long getItemId(int position) {
-            String item = getItem(position);
+            ClosebyPeer item = getItem(position);
             return mIdMap.get(item);
         }
 

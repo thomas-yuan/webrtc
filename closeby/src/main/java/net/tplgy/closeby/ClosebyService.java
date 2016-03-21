@@ -14,9 +14,11 @@ public class ClosebyService {
     private static final String TAG = "ClosebyService";
     private static final Integer BLE_ATTR_MAX_LENGTH = 512;
 
+
     UUID mServiceUuid;
     byte[] mServiceData;
     Map<UUID, byte[]> mProperties = new HashMap<>();
+    ClosebyDataTransferListener mListener;
 
     @Override
     public String toString() {
@@ -62,6 +64,14 @@ public class ClosebyService {
         Log.i(TAG, "add property " + key.toString() + ": " + value.toString());
         mProperties.put(key, value);
         return true;
+    }
+
+    public void setDataTransferListener(ClosebyDataTransferListener listener) {
+        mListener = listener;
+    }
+
+    public void onDataReceived(ClosebyPeer peer, byte[] data) {
+        mListener.dataReceived(peer, data);
     }
 
     public byte[] getValue(UUID key) {
