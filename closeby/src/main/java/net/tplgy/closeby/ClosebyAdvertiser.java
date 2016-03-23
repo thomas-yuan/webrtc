@@ -38,10 +38,10 @@ public class ClosebyAdvertiser {
         mLogger.log("Start advertising service " + mAdvertisementService);
 
         AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder();
-        dataBuilder.addServiceUuid(ParcelUuid.fromString(mAdvertisementService.mServiceUuid.toString()));
-        if (mAdvertisementService.hasData()) {
+        dataBuilder.addServiceUuid(new ParcelUuid(mAdvertisementService.getServiceUuid()));
+        if (mAdvertisementService.getServiceData() != null) {
             // iOS doesn't support advertise service_data, so we use device_name.
-            mBluetoothAdapter.setName(new String(mAdvertisementService.mServiceData));
+            mBluetoothAdapter.setName(new String(mAdvertisementService.getServiceData()));
             dataBuilder.setIncludeDeviceName(true);
         }
         AdvertiseData advertiseData = dataBuilder.build();

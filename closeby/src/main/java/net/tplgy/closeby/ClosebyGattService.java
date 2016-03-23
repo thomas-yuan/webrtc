@@ -17,27 +17,27 @@ import java.util.UUID;
  * Created by thomas on 18/03/16.
  */
 public class ClosebyGattService {
-    private Context mContext;
     private BluetoothManager mManager;
     private BluetoothGattServer mGattServer;
+    private Closeby mCloseby;
     private ClosebyLogger mLogger;
     private ClosebyService mService;
 
-    public ClosebyGattService(Context context, ClosebyLogger logger) {
-        if (context == null || logger == null) {
-            throw new IllegalArgumentException("null parameter: " + context + " " + logger);
+    public ClosebyGattService(Closeby closeby, ClosebyLogger logger) {
+        if (closeby == null || logger == null) {
+            throw new IllegalArgumentException("null parameter: " + closeby + ", " + logger);
         }
 
-        mContext = context;
+        mCloseby = closeby;
         mLogger = logger;
-        mManager = (BluetoothManager)context.getSystemService(Context.BLUETOOTH_SERVICE);
+        mManager = (BluetoothManager)mCloseby.getContext().getSystemService(Context.BLUETOOTH_SERVICE);
     }
 
     public boolean serve(ClosebyService service) {
         mService = service;
-        mGattServer = mManager.openGattServer(mContext, mBluetoothGattServerCallback);
+        mGattServer = mManager.openGattServer(mCloseby.getContext(), mBluetoothGattServerCallback);
 
-        BluetoothGattService s = new BluetoothGattService(service.mServiceUuid,
+        BluetoothGattService s = new BluetoothGattService(service.getServiceUuid(),
                 BluetoothGattService.SERVICE_TYPE_PRIMARY);
 
         for (Map.Entry<UUID, byte[]> entry : service.getProperties().entrySet()) {
@@ -46,8 +46,7 @@ public class ClosebyGattService {
             s.addCharacteristic(c);
         }
 
-        // service has a listener, accept write
-        if (service.mListener != null) {
+        if (!mService.isReadonly()) {
             BluetoothGattCharacteristic c = new BluetoothGattCharacteristic(ClosebyConstant.DATA_UUID,
                     BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE);
             s.addCharacteristic(c);
@@ -71,12 +70,20 @@ public class ClosebyGattService {
         public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
             mLogger.log("BluetoothGattServerCallback:onConnectionStateChange: [" + device.getAddress() + "] status: " + status + ", state: " + ClosebyHelper.connectionState2String(newState));
             super.onConnectionStateChange(device, status, newState);
+
+            if (mCloseby.getPeerByAddress(device.getAddress()) == null) {
+                mLogger.log("New peer connected to me.");
+                ClosebyPeer peer = new ClosebyPeer(mCloseby.getContext(), device, mLogger);
+                mCloseby.onPeerDiscovered(peer);
+            }
         }
 
         @Override
         public void onMtuChanged(BluetoothDevice device, int mtu) {
             mLogger.log("BluetoothGattServerCallback:onMtuChanged: [" + device.getAddress() + "] MTU changed to " + mtu);
             super.onMtuChanged(device, mtu);
+            ClosebyPeer peer = mCloseby.getPeerByAddress(device.getAddress());
+            peer.setMTU(mtu);
         }
 
         @Override
@@ -99,9 +106,10 @@ public class ClosebyGattService {
             //super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value);
 
             assert (characteristic.getUuid() == ClosebyConstant.DATA_UUID);
-            ClosebyPeer peer = new ClosebyPeer(mService.mServiceUuid, device.getAddress(), null, 0, mLogger);
+            ClosebyPeer peer = mCloseby.getPeerByAddress(device.getAddress());
+
             mLogger.log("DATA received from " + device.getAddress() + ": " + new String(value));
-            mService.mListener.dataReceived(peer, value);
+            mCloseby.getDataTransferListener().onDataReceived(peer, value);
             if (responseNeeded) {
                 mLogger.log("send write response");
                 mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);

@@ -9,18 +9,12 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ListView;
 import android.widget.TextView;
 
 import net.tplgy.closeby.Closeby;
-import net.tplgy.closeby.ClosebyDiscoveryListener;
-import net.tplgy.closeby.ClosebyLogger;
 import net.tplgy.closeby.ClosebyPeer;
 import net.tplgy.closeby.ClosebyPeerListener;
 
-import org.w3c.dom.Text;
-
-import java.util.List;
 import java.util.UUID;
 
 public class PeerActivity extends AppCompatActivity {
@@ -105,7 +99,7 @@ public class PeerActivity extends AppCompatActivity {
         });
 
         mCloseby = Closeby.getInstance(this);
-        ClosebyPeer peer = mCloseby.getPeerbyAddress(peerAddress);
+        ClosebyPeer peer = mCloseby.getPeerByAddress(peerAddress);
         mPeer = peer;
         if (mPeer.getServiceData() != null) {
             setTitle(new String(mPeer.getServiceData()) + " [" + peerAddress + "]");

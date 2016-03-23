@@ -10,37 +10,54 @@ import android.bluetooth.le.ScanSettings;
 import android.os.Handler;
 import android.os.ParcelUuid;
 
+import java.security.InvalidParameterException;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Created by thomas on 18/03/16.
  */
 public class ClosebyDiscovery {
-    private BluetoothAdapter mBluetoothAdapter;
-    private ClosebyDiscoveryListener mListener;
+    private Closeby mCloseby;
     private ClosebyLogger mLogger;
     private BluetoothLeScanner mScanner;
     private UUID mService;
-    private ArrayList<ClosebyService> mDiscoveredServices = new ArrayList<ClosebyService>();
-    private HashMap<String, ClosebyPeer> mResults = new HashMap<>();
+    private Set<String> mOldDiscoveredDeviceAddresses = new HashSet<>();
+    private Set<String> mNewDiscoveredDeviceAddresses = new HashSet<>();
     private final Handler mHandler = new Handler();
-    private static int SCAN_PERIOD = 10000;
+    private final Runnable mStopScanning = new Runnable() {
+        @Override
+        public void run() {
+            stop();
+            updateDispearedPeers();
+        }
+    };
 
-    public ClosebyDiscovery(BluetoothAdapter adapter, ClosebyDiscoveryListener listener, ClosebyLogger logger) {
-        if (adapter == null || listener == null || logger == null) {
-            throw new IllegalArgumentException("null parameter: " + adapter + ", " + listener + ", " + logger);
+    private static int SCAN_PERIOD = 10000;
+    private boolean mScanning;
+
+    public ClosebyDiscovery(Closeby closeby, ClosebyLogger logger) {
+        if (closeby == null || logger == null) {
+            throw new IllegalArgumentException("null parameter: " + closeby + ", " + logger);
         }
 
-        mBluetoothAdapter = adapter;
-        mListener = listener;
+        mCloseby = closeby;
         mLogger = logger;
     }
 
+    private void updateDispearedPeers() {
+        for (String p : mOldDiscoveredDeviceAddresses) {
+            if (!mNewDiscoveredDeviceAddresses.contains(p)) {
+                mCloseby.onPeerDisappeared(p);
+            }
+        }
+    }
+
     public void stop() {
+        mScanning = false;
         if (mScanner != null) {
             mScanner.stopScan(mScanCallback);
             mLogger.log("Discovering stopped.");
@@ -48,26 +65,36 @@ public class ClosebyDiscovery {
     }
 
     public boolean start(UUID service) {
+        if (service == null) {
+            throw new InvalidParameterException("null parameter");
+        }
+
+        if (mScanning) {
+            mHandler.removeCallbacks(mStopScanning);
+            stop();
+        }
+
         mService = service;
-        mScanner = mBluetoothAdapter.getBluetoothLeScanner();
+        mOldDiscoveredDeviceAddresses = mNewDiscoveredDeviceAddresses;
+        mNewDiscoveredDeviceAddresses.clear();
+
+        if (mScanner == null) {
+            mScanner = mCloseby.getAdapter().getBluetoothLeScanner();
+            if (mScanner == null) {
+                mLogger.log("Can't get LeScanner.");
+                return false;
+            }
+        }
+
+        mScanning = true;
         ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build();
         List<ScanFilter> filters = new ArrayList<ScanFilter>();
         filters.add(new ScanFilter.Builder().setServiceUuid(new ParcelUuid(service)).build());
 
-        mHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                stop();
-            }
-        }, SCAN_PERIOD);
-
+        mHandler.postDelayed(mStopScanning, SCAN_PERIOD);
         mScanner.startScan(filters, settings, mScanCallback);
         mLogger.log("Discovering started");
         return true;
-    }
-
-    public ClosebyPeer getPeerbyAddress(String address) {
-        return mResults.get(address);
     }
 
     private final ScanCallback mScanCallback = new ScanCallback() {
@@ -85,10 +112,13 @@ public class ClosebyDiscovery {
                 return;
             }
 
-            if (!mResults.containsKey(device.getAddress())) {
-                ClosebyPeer peer = new ClosebyPeer(mService, device.getAddress(), device.getName().getBytes(), result.getRssi(), mLogger);
-                mResults.put(device.getAddress(), peer);
-                mListener.onPeerFound(peer);
+            if (!mNewDiscoveredDeviceAddresses.contains(device.getAddress())) {
+                ClosebyPeer peer = new ClosebyPeer(mCloseby.getContext(), device, mLogger);
+                ClosebyService service = new ClosebyService(mService);
+                service.setServiceData(device.getName().getBytes());
+                peer.setService(service);
+                peer.setRssi(result.getRssi());
+                mCloseby.onPeerDiscovered(peer);
                 mLogger.log("Found [" + device.getAddress() + "] " + device.getName() + " RSSI: " + result.getRssi());
             }
         }

@@ -14,11 +14,10 @@ public class ClosebyService {
     private static final String TAG = "ClosebyService";
     private static final Integer BLE_ATTR_MAX_LENGTH = 512;
 
-
-    UUID mServiceUuid;
-    byte[] mServiceData;
-    Map<UUID, byte[]> mProperties = new HashMap<>();
-    ClosebyDataTransferListener mListener;
+    private UUID mServiceUuid;
+    private byte[] mServiceData;
+    private Map<UUID, byte[]> mProperties = new HashMap<>();
+    private boolean mReadonly = false;
 
     @Override
     public String toString() {
@@ -33,11 +32,7 @@ public class ClosebyService {
     }
 
     public ClosebyService(UUID serviceUuid) {
-        this.mServiceUuid = serviceUuid;
-    }
-
-    public boolean hasData() {
-        return (mServiceData != null);
+        mServiceUuid = serviceUuid;
     }
 
     public boolean setServiceData(byte[] data) {
@@ -55,6 +50,14 @@ public class ClosebyService {
         return true;
     }
 
+    public UUID getServiceUuid() {
+        return mServiceUuid;
+    }
+
+    public byte[] getServiceData() {
+        return mServiceData;
+    }
+
     public boolean addProperty(UUID key, byte[] value) {
         if (value.length > BLE_ATTR_MAX_LENGTH) {
             Log.i(TAG, "property value is too long.");
@@ -66,19 +69,19 @@ public class ClosebyService {
         return true;
     }
 
-    public void setDataTransferListener(ClosebyDataTransferListener listener) {
-        mListener = listener;
-    }
-
-    public void onDataReceived(ClosebyPeer peer, byte[] data) {
-        mListener.dataReceived(peer, data);
+    public Map<UUID, byte[]> getProperties() {
+        return mProperties;
     }
 
     public byte[] getValue(UUID key) {
         return mProperties.get(key);
     }
 
-    public Map<UUID, byte[]> getProperties() {
-        return mProperties;
+    public void setReadonly(boolean readonly) {
+        mReadonly = readonly;
+    }
+
+    public boolean isReadonly() {
+        return mReadonly;
     }
 }

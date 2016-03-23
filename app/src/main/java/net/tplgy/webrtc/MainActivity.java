@@ -80,20 +80,26 @@ public class MainActivity extends AppCompatActivity {
 
         final Button central = (Button) findViewById(R.id.button2);
         assert (central != null);
+        mCloseby.setDiscoveryListener(new ClosebyDiscoveryListener() {
+            @Override
+
+            public void onPeerFound(ClosebyPeer peer) {
+                mPeers.add(peer);
+                mAdapter.mIdMap.put(peer, mPeers.size());
+                mAdapter.notifyDataSetChanged();
+            }
+
+            public void onPeerDisappeared(ClosebyPeer peer) {
+                mPeers.remove(peer);
+                mAdapter.mIdMap.remove(peer);
+                mAdapter.notifyDataSetChanged();
+            }
+        });
+
         central.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                mCloseby.stopDiscovering();
-                reset();
-                mCloseby.startDiscovering(UUID.fromString(SERVICE_UUID), new ClosebyDiscoveryListener() {
-                    @Override
-
-                    public void onPeerFound(ClosebyPeer peer) {
-                        mPeers.add(peer);
-                        mAdapter.mIdMap.put(peer, mPeers.size());
-                        mAdapter.notifyDataSetChanged();
-                    }
-                });
+                mCloseby.startDiscovering(UUID.fromString(SERVICE_UUID));
             }
         });
 
@@ -118,7 +124,7 @@ public class MainActivity extends AppCompatActivity {
                 s.setServiceData(username.getText().toString().getBytes());
                 s.setDataTransferListener(new ClosebyDataTransferListener() {
                     @Override
-                    public void dataReceived(final ClosebyPeer peer, final byte[] data) {
+                    public void onDataReceived(final ClosebyPeer peer, final byte[] data) {
 
                         runOnUiThread(new Runnable() {
                             @Override

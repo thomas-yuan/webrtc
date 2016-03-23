@@ -5,38 +5,41 @@ import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.util.Log;
 
+import java.security.InvalidParameterException;
 import java.text.DateFormat;
 import java.util.Calendar;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 public class Closeby {
 
     final static String TAG = "Closeby";
-    private static final Object mLock = new Object();
     private static Closeby mInstance;
 
     private Context mContext;
     private BluetoothManager mManager;
     private BluetoothAdapter mBluetoothAdapter;
-    private ClosebyAdvertiser mAdvertisor;
+
+    private ClosebyAdvertiser mAdvertiser;
     private ClosebyDiscovery mDiscovery;
+
     private ClosebyGattService mGattService;
-    private ClosebyGattClient mGattClient;
+
+    // If someone connect to us and we didn't find it before, we will treat it as "discovered".
     private ClosebyDiscoveryListener mDiscoveryListener;
+    ClosebyDataTransferListener mDataTransferListener;
+    private Map<String, ClosebyPeer> mPeers = new HashMap<>();
     private ClosebyLogger mLogger;
 
-    public static Closeby getInstance(Context context) {
-        // Do we really need this synchronized?
-        synchronized(mLock) {
-            if (mInstance == null) {
-                try {
-                    mInstance = new Closeby(context);
-                } catch (Exception e) {
-                    Log.e(TAG, e.toString());
-                }
+    public static synchronized Closeby getInstance(Context context) {
+        if (mInstance == null) {
+            try {
+                mInstance = new Closeby(context);
+            } catch (Exception e) {
+                Log.e(TAG, e.toString());
             }
         }
-
         return mInstance;
     }
 
@@ -49,26 +52,42 @@ public class Closeby {
         }
     }
 
+    public void setDiscoveryListener(ClosebyDiscoveryListener listener) {
+        mInternalLogger.log("setDiscoveryListener");
+        mDiscoveryListener = listener;
+    }
+
+    public void setDataTransferListener(ClosebyDataTransferListener listener) {
+        mDataTransferListener = listener;
+    }
+
+    public ClosebyDataTransferListener getDataTransferListener() {
+        return mDataTransferListener;
+    }
+
+    public void setLogger(ClosebyLogger logger) {
+        mLogger = logger;
+        generateStateLog();
+    }
+
     public boolean isEnabled() {
         return mBluetoothAdapter.isEnabled();
     }
 
-    public ClosebyPeer getPeerbyAddress(String address) {
-        if (mDiscovery != null) {
-            return mDiscovery.getPeerbyAddress(address);
-        }
-
-        assert (mAdvertisor != null);
-        return new ClosebyPeer(mAdvertisor.getService().mServiceUuid, address, null, 0, mInternalLogger);
+    protected BluetoothAdapter getAdapter() {
+        return mBluetoothAdapter;
     }
 
-    public boolean getProperties(ClosebyPeer peer, ClosebyPeerListener listener) {
-        if (mGattClient == null) {
-            mGattClient = new ClosebyGattClient(mContext, mBluetoothAdapter, mInternalLogger);
-        }
+    protected BluetoothManager getManager() {
+        return mManager;
+    }
 
-        mGattClient.getProperties(peer, listener);
-        return true;
+    protected Context getContext() {
+        return mContext;
+    }
+
+    public ClosebyPeer getPeerByAddress(String address) {
+        return mPeers.get(address);
     }
 
     private void generateStateLog() {
@@ -84,11 +103,6 @@ public class Closeby {
         mInternalLogger.log("   OffloadedScanBatchingSupport: " + mBluetoothAdapter.isOffloadedScanBatchingSupported());
     }
 
-    public void setLogger(ClosebyLogger logger) {
-        mLogger = logger;
-        generateStateLog();
-    }
-
     final private ClosebyLogger mInternalLogger = new ClosebyLogger() {
         @Override
         public void log(String logs) {
@@ -99,6 +113,21 @@ public class Closeby {
         }
     };
 
+    protected void onPeerDiscovered(ClosebyPeer peer) {
+        mPeers.put(peer.getAddress(), peer);
+        peer.getDetails();
+        //mDiscoveryListener.onPeerFound(peer);
+    }
+
+    protected void onPeerDisappeared(String peerAddress) {
+        ClosebyPeer peer = mPeers.remove(peerAddress);
+        mDiscoveryListener.onPeerDisappeared(peer);
+    }
+
+    protected void onPeerDetailsReady(ClosebyPeer peer) {
+        mDiscoveryListener.onPeerFound(peer);
+    }
+
     public boolean startAdvertising(ClosebyService service) {
         if (!mBluetoothAdapter.isEnabled()) {
             mInternalLogger.log("Bluetooth is disabled");
@@ -106,18 +135,18 @@ public class Closeby {
         }
 
         if (mGattService == null) {
-            mGattService = new ClosebyGattService(mContext, mInternalLogger);
+            mGattService = new ClosebyGattService(this, mInternalLogger);
         }
 
         if (!mGattService.serve(service)) {
             return false;
         }
 
-        if (mAdvertisor == null) {
-            mAdvertisor = new ClosebyAdvertiser(mBluetoothAdapter, mInternalLogger);
+        if (mAdvertiser == null) {
+            mAdvertiser = new ClosebyAdvertiser(mBluetoothAdapter, mInternalLogger);
         }
 
-        if (!mAdvertisor.start(service)) {
+        if (!mAdvertiser.start(service)) {
             mGattService.stop();
             return false;
         }
@@ -134,14 +163,19 @@ public class Closeby {
             mGattService.stop();
         }
 
-        if (mAdvertisor != null) {
-            mAdvertisor.stop();
+        if (mAdvertiser != null) {
+            mAdvertiser.stop();
         }
     }
 
-    public boolean startDiscovering(UUID service, ClosebyDiscoveryListener listener) {
-        if (service == null || listener == null) {
-            mInternalLogger.log("null parameter: " + service + " " + listener);
+    public boolean startDiscovering(UUID service) {
+        if (service == null) {
+            mInternalLogger.log("null parameter: " + service);
+            return false;
+        }
+
+        if (mDiscoveryListener == null) {
+            mInternalLogger.log("please setDiscoveryListener before discovering!");
             return false;
         }
 
@@ -151,7 +185,7 @@ public class Closeby {
         }
 
         if (mDiscovery == null) {
-            mDiscovery = new ClosebyDiscovery(mBluetoothAdapter, listener, mInternalLogger);
+            mDiscovery = new ClosebyDiscovery(this, mInternalLogger);
         }
 
         return mDiscovery.start(service);
@@ -168,17 +202,8 @@ public class Closeby {
     }
 
     public boolean sendDataToPeer(ClosebyPeer peer, byte[] bytes) {
-
-        assert (mGattClient != null);
-
-        if (peer.isReadonly()) {
-            mInternalLogger.log("peer " + peer.getAddress() + " is readonly, can't send data to it");
-            return false;
-        }
-
-        peer.setData(bytes);
-        return mGattClient.sendData(peer, bytes);
-        }
+        return peer.sendData(bytes);
+    }
 
     public boolean sendFileToPeer(ClosebyPeer peer, String filePath, String id) {
 

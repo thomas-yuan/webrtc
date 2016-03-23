@@ -5,4 +5,5 @@ package net.tplgy.closeby;
  */
 public interface ClosebyDiscoveryListener {
     public void onPeerFound(ClosebyPeer peer);
+    public void onPeerDisappeared(ClosebyPeer peer);
 }
