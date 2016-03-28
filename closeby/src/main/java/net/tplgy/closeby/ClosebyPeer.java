@@ -41,7 +41,8 @@ public class ClosebyPeer {
     private static final int GATT_STATE_SERVICE_DISCOVERED = 1;
     private static final int GATT_STATE_CHARACTERTISTIC_READ = 2;
     private static final int GATT_STATE_DONE = 3;
-    private static final int GATT_STATE_INVALID = 4;
+    private static final int GATT_STATE_MTU_CHANGED = 4;
+    private static final int GATT_STATE_INVALID = 5;
 
     public String toString() {
         String ret = new String("");
@@ -148,7 +149,7 @@ public class ClosebyPeer {
     private void invokeNextGattAction() {
         switch (mGattState) {
             case GATT_STATE_NEW:
-                mGatt.discoverServices();
+                mGatt.requestMtu(ClosebyConstant.MTU);
                 break;
 
             case GATT_STATE_SERVICE_DISCOVERED:
@@ -164,6 +165,10 @@ public class ClosebyPeer {
 
             case GATT_STATE_CHARACTERTISTIC_READ:
                 readNextCharactertistic();
+                break;
+
+            case GATT_STATE_MTU_CHANGED:
+                mGatt.discoverServices();
                 break;
 
             case GATT_STATE_DONE:
@@ -250,6 +255,10 @@ public class ClosebyPeer {
             return false;
         }
 
+        if (data.length > mMTU) {
+            mLogger.log(" FIXME: DATA is too long!!!");
+        }
+
         c.setValue(data);
         boolean r = mGatt.writeCharacteristic(c);
         mLogger.log("WriteCharacteristic " + r);
@@ -267,7 +276,9 @@ public class ClosebyPeer {
         }
 
         mDataQueue.add(data);
-        connect();
+        if (mConnectionState != STATE_CONNECTING) {
+            connect();
+        }
 
         return true;
 
@@ -332,6 +343,13 @@ private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() 
     public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
         mLogger.log("GattCallback:onMtuChanged: [" + gatt.getDevice().getAddress() + "] status " + status + ", mtu " + mtu);
         super.onMtuChanged(gatt, mtu, status);
+
+        ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+        if (status == 0) {
+            mLogger.log("mtu change to " + mtu);
+            peer.setMTU(mtu);
+        }
+        peer.setGattState(GATT_STATE_MTU_CHANGED);
     }
 
     @Override

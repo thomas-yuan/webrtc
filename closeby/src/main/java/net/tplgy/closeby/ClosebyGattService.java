@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothGattServer;
 import android.bluetooth.BluetoothGattServerCallback;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 
 import java.util.Map;
@@ -71,12 +72,28 @@ public class ClosebyGattService {
             mLogger.log("BluetoothGattServerCallback:onConnectionStateChange: [" + device.getAddress() + "] status: " + status + ", state: " + ClosebyHelper.connectionState2String(newState));
             super.onConnectionStateChange(device, status, newState);
 
-            if (mCloseby.getPeerByAddress(device.getAddress()) == null) {
-                mLogger.log("New peer connected to me.");
-                ClosebyPeer peer = new ClosebyPeer(mCloseby,device, mLogger);
-                ClosebyService s = new ClosebyService(mService.getServiceUuid());
-                peer.setService(s);
-                mCloseby.onPeerDiscovered(peer);
+            ClosebyPeer peer = mCloseby.getPeerByAddress(device.getAddress());
+            switch (newState) {
+                case BluetoothProfile.STATE_CONNECTED:
+                    if (peer == null) {
+                        mLogger.log("New peer connected to me.");
+                        peer = new ClosebyPeer(mCloseby, device, mLogger);
+                        ClosebyService s = new ClosebyService(mService.getServiceUuid());
+                        peer.setService(s);
+                        mCloseby.onPeerDiscovered(peer);
+                    }
+                    break;
+
+                case BluetoothProfile.STATE_DISCONNECTED:
+                    if (peer != null) {
+                        peer.onDisconnected();
+                    }
+                    break;
+                default:
+            }
+
+            if (peer == null) {
+
             }
         }
 

@@ -72,9 +72,9 @@ public class PeerActivity extends AppCompatActivity {
         ClosebyPeer peer = mCloseby.getPeerByAddress(peerAddress);
         mPeer = peer;
         if (mPeer.getServiceData() != null) {
-            setTitle(new String(mPeer.getServiceData()) + " [" + peerAddress + "]");
+            setTitle(new String(mPeer.getServiceData()) + " [" + peerAddress + "] MTU " + mPeer.getMTU());
         } else {
-            setTitle(new String("[" + peerAddress + "]"));
+            setTitle(new String("[" + peerAddress + "] MTU " + mPeer.getMTU()));
         }
         final TextView textview = (TextView) findViewById(R.id.textView2);
         final byte[] email = mPeer.getProperty(UUID.fromString(EMAIL_UUID));
