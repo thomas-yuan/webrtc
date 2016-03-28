@@ -146,7 +146,7 @@ public class Closeby {
         }
 
         if (!mAdvertiser.start(service)) {
-            mGattService.stop();
+            mInternalLogger.log("Advertise failed.");
             return false;
         }
 

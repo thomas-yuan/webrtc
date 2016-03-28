@@ -3,5 +3,5 @@ package net.tplgy.closeby;
 /**
  * Created by thomas on 2016-03-11.
  */
-interface ClosebyFileTransferListener {
+public interface ClosebyFileTransferListener {
 }

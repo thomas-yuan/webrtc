@@ -6,6 +6,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
@@ -44,6 +45,8 @@ public class MainActivity extends AppCompatActivity {
 
         final TextView textview = (TextView) findViewById(R.id.textView);
         assert (textview!=null);
+        textview.setMovementMethod(new ScrollingMovementMethod());
+
 
         final AlertDialog mDialog = new AlertDialog.Builder(this).setTitle("Error")
                 .setMessage("Please set username and email address before advertising")
@@ -83,22 +86,34 @@ public class MainActivity extends AppCompatActivity {
         mCloseby.setDiscoveryListener(new ClosebyDiscoveryListener() {
             @Override
 
-            public void onPeerFound(ClosebyPeer peer) {
-                mPeers.add(peer);
-                mAdapter.mIdMap.put(peer, mPeers.size());
-                mAdapter.notifyDataSetChanged();
+            public void onPeerFound(final ClosebyPeer peer) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mPeers.add(peer);
+                        mAdapter.mIdMap.put(peer, mPeers.size());
+                        mAdapter.notifyDataSetChanged();                    }
+                });
             }
 
-            public void onPeerDisappeared(ClosebyPeer peer) {
-                mPeers.remove(peer);
-                mAdapter.mIdMap.remove(peer);
-                mAdapter.notifyDataSetChanged();
+            public void onPeerDisappeared(final ClosebyPeer peer) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mPeers.remove(peer);
+                        mAdapter.mIdMap.remove(peer);
+                        mAdapter.notifyDataSetChanged();
+                    }
+                });
             }
         });
 
         central.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+//                mPeers.clear();
+//                mAdapter.mIdMap.clear();
+//                mAdapter.notifyDataSetChanged();
                 mCloseby.startDiscovering(UUID.fromString(SERVICE_UUID));
             }
         });

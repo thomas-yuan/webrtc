@@ -47,6 +47,7 @@ public class ClosebyService {
         }
 
         mServiceData = data;
+        addProperty(ClosebyConstant.ID_UUID, mServiceData);
         return true;
     }
 
@@ -66,6 +67,9 @@ public class ClosebyService {
 
         Log.i(TAG, "add property " + key.toString() + ": " + value.toString());
         mProperties.put(key, value);
+        if (ClosebyConstant.ID_UUID.equals(key)) {
+            mServiceData = value;
+        }
         return true;
     }
 

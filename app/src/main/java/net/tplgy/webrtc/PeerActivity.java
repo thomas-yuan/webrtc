@@ -13,7 +13,6 @@ import android.widget.TextView;
 
 import net.tplgy.closeby.Closeby;
 import net.tplgy.closeby.ClosebyPeer;
-import net.tplgy.closeby.ClosebyPeerListener;
 
 import java.util.UUID;
 
@@ -24,36 +23,6 @@ public class PeerActivity extends AppCompatActivity {
 
     private Closeby mCloseby;
     private ClosebyPeer mPeer;
-    private final ClosebyPeerListener mListener = new ClosebyPeerListener() {
-        @Override
-        public void onReady(ClosebyPeer peer) {
-            assert(mPeer == peer);
-
-            final TextView textview = (TextView) findViewById(R.id.textView2);
-            final byte[] email = mPeer.getProperty(UUID.fromString(EMAIL_UUID));
-            assert (email != null);
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    textview.setText(new String(email));
-                }
-            });
-        }
-
-        public void onFailed(ClosebyPeer peer) {
-            assert (mPeer == peer);
-
-            final TextView textview = (TextView) findViewById(R.id.textView2);
-            final String error = new String("Can't connect to peer ") + peer.getAddress();
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    textview.setText(error);
-                }
-            });
-        }
-    };
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,6 +38,7 @@ public class PeerActivity extends AppCompatActivity {
             assert(messages != null);
             messages.append(msg);
         }
+
 
         assert (!peerAddress.isEmpty());
         Log.i("SS", peerAddress);
@@ -106,7 +76,11 @@ public class PeerActivity extends AppCompatActivity {
         } else {
             setTitle(new String("[" + peerAddress + "]"));
         }
-        mCloseby.getProperties(peer, mListener);
+        final TextView textview = (TextView) findViewById(R.id.textView2);
+        final byte[] email = mPeer.getProperty(UUID.fromString(EMAIL_UUID));
+        textview.setText(new String(email));
+
+        //mCloseby.getProperties(peer, mListener);
     }
 
 }

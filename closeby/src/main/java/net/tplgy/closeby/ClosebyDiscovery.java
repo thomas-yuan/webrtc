@@ -49,6 +49,7 @@ public class ClosebyDiscovery {
     private void updateDispearedPeers() {
         for (String p : mOldDiscoveredDeviceAddresses) {
             if (!mNewDiscoveredDeviceAddresses.contains(p)) {
+                mLogger.log(p + " dispeared");
                 mCloseby.onPeerDisappeared(p);
             }
         }
@@ -75,8 +76,8 @@ public class ClosebyDiscovery {
         }
 
         mService = service;
-        mOldDiscoveredDeviceAddresses = mNewDiscoveredDeviceAddresses;
-        mNewDiscoveredDeviceAddresses.clear();
+        mOldDiscoveredDeviceAddresses = new HashSet<>(mNewDiscoveredDeviceAddresses);
+        mNewDiscoveredDeviceAddresses = new HashSet<>();
 
         if (mScanner == null) {
             mScanner = mCloseby.getAdapter().getBluetoothLeScanner();
@@ -112,13 +113,23 @@ public class ClosebyDiscovery {
                 return;
             }
 
+
             if (!mNewDiscoveredDeviceAddresses.contains(device.getAddress())) {
-                ClosebyPeer peer = new ClosebyPeer(mCloseby, device, mLogger);
-                ClosebyService service = new ClosebyService(mService);
-                service.setServiceData(device.getName().getBytes());
-                peer.setService(service);
-                peer.setRssi(result.getRssi());
-                mCloseby.onPeerDiscovered(peer);
+                mNewDiscoveredDeviceAddresses.add(device.getAddress());
+                if (!mOldDiscoveredDeviceAddresses.contains(device.getAddress())) {
+                    ClosebyPeer peer = new ClosebyPeer(mCloseby, device, mLogger);
+                    ClosebyService service = new ClosebyService(mService);
+                    service.setServiceData(device.getName().getBytes());
+                    peer.setService(service);
+                    peer.setRssi(result.getRssi());
+                    mCloseby.onPeerDiscovered(peer);
+                } else {
+                    ClosebyPeer peer = mCloseby.getPeerByAddress(device.getAddress());
+                    peer.setRssi(result.getRssi());
+                    mCloseby.onPeerDiscovered(peer);
+                    mLogger.log("Already found it before.");
+                }
+
                 mLogger.log("Found [" + device.getAddress() + "] " + device.getName() + " RSSI: " + result.getRssi());
             }
         }

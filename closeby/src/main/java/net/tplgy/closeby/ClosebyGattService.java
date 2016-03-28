@@ -74,6 +74,8 @@ public class ClosebyGattService {
             if (mCloseby.getPeerByAddress(device.getAddress()) == null) {
                 mLogger.log("New peer connected to me.");
                 ClosebyPeer peer = new ClosebyPeer(mCloseby,device, mLogger);
+                ClosebyService s = new ClosebyService(mService.getServiceUuid());
+                peer.setService(s);
                 mCloseby.onPeerDiscovered(peer);
             }
         }
