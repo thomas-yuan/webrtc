@@ -7,11 +7,6 @@ import android.bluetooth.le.AdvertiseSettings;
 import android.bluetooth.le.BluetoothLeAdvertiser;
 import android.os.ParcelUuid;
 
-import java.util.Map;
-
-/**
- * Created by thomas on 18/03/16.
- */
 public class ClosebyAdvertiser {
     private BluetoothAdapter mBluetoothAdapter;
     private BluetoothLeAdvertiser mLeAdvertister;

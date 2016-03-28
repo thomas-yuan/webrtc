@@ -7,14 +7,11 @@ import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
-import android.content.Context;
 
 import java.security.InvalidParameterException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -30,15 +27,23 @@ public class ClosebyPeer {
     private ArrayList<BluetoothGattCharacteristic> mCharacteristics;
     private int mMTU = 20;
     private BluetoothGatt mGatt;
+    private BluetoothGattService mGattService;
     private BluetoothDevice mDevice;
     private int mConnectionState = STATE_DISCONNECTED;
-    private boolean mQueryDone = false;
+    private int mGattState = false;
 
     private List<byte[]> mDataQueue = new ArrayList<>();
 
     private static final int STATE_DISCONNECTED = 0;
     private static final int STATE_CONNECTING = 1;
     private static final int STATE_CONNECTED = 2;
+
+
+    private static final int GATT_STATE_NEW = 0;
+    private static final int GATT_STATE_SERVICE_DISCOVERED = 1;
+    private static final int GATT_STATE_CHARACTERTISTIC_READ = 2;
+    private static final int GATT_STATE_DONE = 3;
+
     private void details;
 
 
@@ -64,7 +69,7 @@ public class ClosebyPeer {
     }
 
     public void getDetails() {
-        if (mQueryDone) {
+        if (mGattState == GATT_STATE_DONE) {
             mLogger.log("already got details.");
             return;
         }
@@ -82,11 +87,10 @@ public class ClosebyPeer {
         }
 
         mConnectionState = STATE_CONNECTING;
-        return;
     }
 
     public Map<UUID, byte[]> getProperties() {
-        assert(mQueryDone);
+        assert(mGattState == GATT_STATE_DONE);
         return mService.getProperties();
     }
 
@@ -110,21 +114,79 @@ public class ClosebyPeer {
     public void setCharacteristics(List<BluetoothGattCharacteristic> characteristics) {
         mCharacteristics = (ArrayList)characteristics;
         mLogger.log("setCharacteristics " + characteristics.size());
+        boolean readonly = true;
         for (BluetoothGattCharacteristic c : mCharacteristics) {
             if (c.getUuid().equals(ClosebyConstant.DATA_UUID)) {
-                mReadonly = false;
+                readonly = false;
                 break;
             }
         }
+        mService.setReadonly(readonly);
     }
 
-    public void onConnectionFailed() {
-        mConnected = false;
-        mListener.onFailed(this);
+    private void setGattState(int state) {
+        mGattState = state;
+        invokeNextGattAction();
     }
 
-    public void onReady() {
-        mListener.onReady(this);
+    private void readNextCharactertistic() {
+        if (!isAllPropertyAvailable()) {
+            BluetoothGattCharacteristic c = getNextCharacteristic();
+            boolean ok = mGatt.readCharacteristic(c);
+            mLogger.log("Read " + c.getUuid().toString() + ": " + Boolean.toString(ok));;
+        } else {
+            setGattState(GATT_STATE_DONE);
+        }
+    }
+
+    private boolean isAllPropertyAvailable() {
+        int expect = mCharacteristics.size();
+        if (!mService.isReadonly()) {
+            expect -= 1;
+        }
+
+        return (mService.getPropertiesSize() == expect);
+    }
+
+    private void invokeNextGattAction() {
+        switch (mGattState) {
+            case GATT_STATE_NEW:
+                mGatt.discoverServices();
+                break;
+
+            case GATT_STATE_SERVICE_DISCOVERED:
+                mGattService = mGatt.getService(mService.getServiceUuid());
+                setCharacteristics(mGattService.getCharacteristics());
+                readNextCharactertistic();
+                break;
+
+            case GATT_STATE_CHARACTERTISTIC_READ:
+                break;
+
+            case GATT_STATE_DONE:
+                mLogger.log("All done.");
+                break;
+
+            default:
+                mLogger.log("Invalid status.");
+        }
+    }
+
+    public void onConnected() {
+        mConnectionState = STATE_CONNECTED;
+        if (mGattState != GATT_STATE_DONE) {
+            invokeNextGattAction();
+            return;
+        }
+
+        if (!mDataQueue.isEmpty()) {
+            //FIXME Send queue data.
+        }
+
+    }
+
+    public void onDisconnected() {
+        mConnectionState = STATE_DISCONNECTED;
     }
 
     public void setListener(ClosebyPeerListener listener) {
@@ -163,8 +225,9 @@ public class ClosebyPeer {
     }
 
     public boolean sendData(byte[] data) {
+        mDataQueue.add(data);
 
-        if (mConnected) {
+        if (mConnectionState == STATE_CONNECTED) {
             if (mGatt != null) {
                 BluetoothGattCharacteristic c = .getCharacteristic(ClosebyConstant.DATA_UUID);
                 if (c == null) {
@@ -194,6 +257,8 @@ public class ClosebyPeer {
     }
 
 
+
+
 private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
     @Override
     public void onConnectionStateChange(final BluetoothGatt gatt, int status, int newState) {
@@ -202,30 +267,23 @@ private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() 
 
         super.onConnectionStateChange(gatt, status, newState);
         ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+        assert (peer != null);
 
-        final int MTU = 256;
-        if (newState == BluetoothProfile.STATE_CONNECTED) {
+        switch (newState) {
+            case BluetoothProfile.STATE_CONNECTED:
+                peer.onConnected();
+                break;
 
-            boolean ok = gatt.requestMtu(MTU);
-            mLogger.log("requestMtu to " + MTU + " " + ok);
-            return;
+            case BluetoothProfile.STATE_DISCONNECTED:
+                peer.onDisconnected();
+                break;
+            default:
         }
-
-        ClosebyPeer peer = mPeers.get(gatt.getDevice().getAddress());
-        if (peer == null) {
-            mLogger.log("never request this peer?!");
-            return;
-        }
-
-        peer.onConnectionFailed();
-        return;
     }
 
     public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
         mLogger.log("GattCallback:onMtuChanged: [" + gatt.getDevice().getAddress() + "] status " + status + ", mtu " + mtu);
         super.onMtuChanged(gatt, mtu, status);
-        boolean ok = gatt.discoverServices();
-        mLogger.log("discoverServices " + ok);
     }
 
     @Override
@@ -233,45 +291,9 @@ private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() 
         super.onServicesDiscovered(gatt, status);
         mLogger.log("GattCallback:onServicesDiscovered: [" + gatt.getDevice().getAddress() + "] status " + status);
 
-        ClosebyPeer peer = mPeers.get(gatt.getDevice().getAddress());
-        if (peer == null) {
-            mLogger.log("never request this peer?!");
-            gatt.close();
-            return;
-        }
-
-        BluetoothGattService service = gatt.getService(peer.getService());
-        if (service == null) {
-            mLogger.log("peer doesn't have service " + peer.getService() + "?!");
-            gatt.close();
-            return;
-        }
-
-        byte[] data = peer.getData();
-        if (data != null) {
-            mLogger.log("This connection is for sending data");
-            BluetoothGattCharacteristic c = service.getCharacteristic(ClosebyConstant.DATA_UUID);
-            if (c == null) {
-                mLogger.log("service doesn't support receiving data.");
-                gatt.close();
-                return;
-            }
-
-            c.setValue(peer.getData());
-            boolean r = gatt.writeCharacteristic(c);
-            mLogger.log("WriteCharacteristic " + r);
-            peer.setData(null);
-            return;
-        }
-
-        peer.setCharacteristics(service.getCharacteristics());
-        if (peer.isAllPropertyAvailable()) {
-            gatt.close();
-        } else {
-            BluetoothGattCharacteristic c = peer.getNextCharacteristic();
-            boolean ok = gatt.readCharacteristic(c);
-            mLogger.log("Read " + c.getUuid().toString() + ": " + Boolean.toString(ok));;
-        }
+        ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+        assert(peer != null);
+        peer.setGattState(GATT_STATE_SERVICE_DISCOVERED);
     }
 
     @Override
@@ -279,17 +301,14 @@ private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() 
         super.onCharacteristicRead(gatt, characteristic, status);
         mLogger.log("GattCallback:onCharacteristicRead: [" + gatt.getDevice().getAddress() + "] status: " + status + ", value: " + new String(characteristic.getValue()));
 
-        ClosebyPeer peer = mPeers.get(gatt.getDevice().getAddress());
-        if (peer == null) {
-            mLogger.log("never request this peer?!");
-            gatt.close();
-            return;
-        }
+        ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+        assert(peer != null);
 
+        peer.setGattState(GATT_STATE_CHARACTERTISTIC_READ);
         peer.setProperty(characteristic.getUuid(), characteristic.getValue());
         if (peer.isAllPropertyAvailable()) {
             mLogger.log("We get all characteristics.");
-            peer.onReady();
+            peer.onConnected();
             gatt.close();
         } else {
             BluetoothGattCharacteristic c = peer.getNextCharacteristic();

@@ -122,15 +122,13 @@ public class MainActivity extends AppCompatActivity {
                 ClosebyService s = new ClosebyService(UUID.fromString(SERVICE_UUID));
                 s.addProperty(UUID.fromString(EMAIL_UUID), email.getText().toString().getBytes());
                 s.setServiceData(username.getText().toString().getBytes());
-                s.setDataTransferListener(new ClosebyDataTransferListener() {
+                mCloseby.setDataTransferListener(new ClosebyDataTransferListener() {
                     @Override
                     public void onDataReceived(final ClosebyPeer peer, final byte[] data) {
 
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
-
-
                                 textview.append("message received from peer: " + peer.getAddress() + ": " + new String(data));
 
                                 Intent intentMain = new Intent(MainActivity.this ,
@@ -170,13 +168,6 @@ public class MainActivity extends AppCompatActivity {
         mCloseby.stopAdvertising();
         mCloseby.stopDiscovering();
         super.onDestroy();
-    }
-
-    public void reset() {
-        mPeers.clear();
-        mAdapter.mIdMap.clear();
-        //assert (mAdapter.mIdMap.size() == 0);
-        mAdapter.notifyDataSetInvalidated();// .notifyDataSetChanged();
     }
 
     private class StableArrayAdapter extends ArrayAdapter<ClosebyPeer> {

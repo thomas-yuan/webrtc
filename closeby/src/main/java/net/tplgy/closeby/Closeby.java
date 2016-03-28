@@ -5,7 +5,6 @@ import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.util.Log;
 
-import java.security.InvalidParameterException;
 import java.text.DateFormat;
 import java.util.Calendar;
 import java.util.HashMap;
@@ -170,7 +169,7 @@ public class Closeby {
 
     public boolean startDiscovering(UUID service) {
         if (service == null) {
-            mInternalLogger.log("null parameter: " + service);
+            mInternalLogger.log("null parameter");
             return false;
         }
 

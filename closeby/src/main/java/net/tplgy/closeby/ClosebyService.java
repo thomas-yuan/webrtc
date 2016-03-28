@@ -69,6 +69,10 @@ public class ClosebyService {
         return true;
     }
 
+    public int getPropertiesSize() {
+        return mProperties.size();
+    }
+
     public Map<UUID, byte[]> getProperties() {
         return mProperties;
     }

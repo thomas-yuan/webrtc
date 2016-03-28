@@ -1,6 +1,5 @@
 package net.tplgy.closeby;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
@@ -36,7 +35,6 @@ public class ClosebyDiscovery {
         }
     };
 
-    private static int SCAN_PERIOD = 10000;
     private boolean mScanning;
 
     public ClosebyDiscovery(Closeby closeby, ClosebyLogger logger) {
@@ -65,6 +63,8 @@ public class ClosebyDiscovery {
     }
 
     public boolean start(UUID service) {
+        int SCAN_PERIOD = 10000;
+
         if (service == null) {
             throw new InvalidParameterException("null parameter");
         }
@@ -88,7 +88,7 @@ public class ClosebyDiscovery {
 
         mScanning = true;
         ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build();
-        List<ScanFilter> filters = new ArrayList<ScanFilter>();
+        List<ScanFilter> filters = new ArrayList<>();
         filters.add(new ScanFilter.Builder().setServiceUuid(new ParcelUuid(service)).build());
 
         mHandler.postDelayed(mStopScanning, SCAN_PERIOD);
@@ -113,7 +113,7 @@ public class ClosebyDiscovery {
             }
 
             if (!mNewDiscoveredDeviceAddresses.contains(device.getAddress())) {
-                ClosebyPeer peer = new ClosebyPeer(mCloseby.getContext(), device, mLogger);
+                ClosebyPeer peer = new ClosebyPeer(mCloseby, device, mLogger);
                 ClosebyService service = new ClosebyService(mService);
                 service.setServiceData(device.getName().getBytes());
                 peer.setService(service);
