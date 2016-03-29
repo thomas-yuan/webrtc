@@ -14,9 +14,6 @@ import android.content.Context;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Created by thomas on 18/03/16.
- */
 public class ClosebyGattService {
     private BluetoothManager mManager;
     private BluetoothGattServer mGattServer;
@@ -91,10 +88,6 @@ public class ClosebyGattService {
                     break;
                 default:
             }
-
-            if (peer == null) {
-
-            }
         }
 
         @Override
@@ -124,7 +117,6 @@ public class ClosebyGattService {
             // TODO.
             //super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value);
 
-            assert (characteristic.getUuid() == ClosebyConstant.DATA_UUID);
             ClosebyPeer peer = mCloseby.getPeerByAddress(device.getAddress());
 
             mLogger.log("DATA received from " + device.getAddress() + ": " + new String(value));

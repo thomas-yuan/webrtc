@@ -4,9 +4,6 @@ import android.bluetooth.BluetoothAdapter;
 import java.util.List;
 import static java.util.Arrays.asList;
 
-/**
- * Created by thomas on 16/03/16.
- */
 public class ClosebyHelper {
 
     static private final String UNKNOWN = "UNKNOWN";

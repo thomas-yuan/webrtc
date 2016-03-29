@@ -16,9 +16,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Created by thomas on 18/03/16.
- */
 public class ClosebyDiscovery {
     private Closeby mCloseby;
     private ClosebyLogger mLogger;
@@ -112,7 +109,6 @@ public class ClosebyDiscovery {
                 mLogger.log("Device is null!!!!");
                 return;
             }
-
 
             if (!mNewDiscoveredDeviceAddresses.contains(device.getAddress())) {
                 mNewDiscoveredDeviceAddresses.add(device.getAddress());

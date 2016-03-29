@@ -14,9 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Created by thomas on 2016-03-11.
- */
 public class ClosebyPeer {
     private Closeby mCloseby;
     private ClosebyService mService;
@@ -45,11 +42,13 @@ public class ClosebyPeer {
     private static final int GATT_STATE_INVALID = 5;
 
     public String toString() {
-        String ret = new String("");
+        String ret;
         if (mService.getServiceData() != null) {
-            ret += new String(mService.getServiceData());
+            ret = new String(mService.getServiceData()) + " [" + mDevice.getAddress() + "]" + " RSSI " + mRSSI;
+        } else {
+            ret = " [" + mDevice.getAddress() + "]" + " RSSI " + mRSSI;
         }
-        ret += " [" + mDevice.getAddress() + "]" + " RSSI " + mRSSI;
+
         return ret;
     }
 
@@ -76,7 +75,7 @@ public class ClosebyPeer {
 
         if (mGatt == null) {
             mLogger.log("mGatt == null, connectGatt.");
-            mGatt = mDevice.connectGatt(mCloseby.getContext(), false, mGattCallback, BluetoothDevice.TRANSPORT_LE);
+            mGatt = mDevice.connectGatt(mCloseby.getContext(), false, mGattCallback);
             assert(mGatt != null);
             mConnectionState = STATE_CONNECTING;
             return;
@@ -86,7 +85,6 @@ public class ClosebyPeer {
     }
 
     public Map<UUID, byte[]> getProperties() {
-        assert(mGattState == GATT_STATE_DONE);
         return mService.getProperties();
     }
 
@@ -108,7 +106,7 @@ public class ClosebyPeer {
     }
 
     public void setCharacteristics(List<BluetoothGattCharacteristic> characteristics) {
-        mCharacteristics = (ArrayList)characteristics;
+        mCharacteristics = (ArrayList<BluetoothGattCharacteristic>)characteristics;
         mLogger.log("setCharacteristics " + characteristics.size());
         boolean readonly = true;
         for (BluetoothGattCharacteristic c : mCharacteristics) {
@@ -129,7 +127,7 @@ public class ClosebyPeer {
         if (!isAllPropertyAvailable()) {
             BluetoothGattCharacteristic c = getNextCharacteristic();
             boolean ok = mGatt.readCharacteristic(c);
-            mLogger.log("Read " + c.getUuid().toString() + ": " + Boolean.toString(ok));;
+            mLogger.log("Read " + c.getUuid().toString() + ": " + Boolean.toString(ok));
         } else {
             mGattState = GATT_STATE_DONE;
             mCloseby.onPeerDetailsReady(this);
@@ -174,7 +172,6 @@ public class ClosebyPeer {
             case GATT_STATE_DONE:
                 mLogger.log("All done.");
                 if (!mDataQueue.isEmpty()) {
-                    //FIXME Send queue data.
                     byte[] data = mDataQueue.remove(0);
                     send(data);
                 }
@@ -281,140 +278,107 @@ public class ClosebyPeer {
         }
 
         return true;
-
-//        if (mConnectionState == STATE_CONNECTED) {
-//            if (mGatt != null) {
-//                BluetoothGattCharacteristic c = .getCharacteristic(ClosebyConstant.DATA_UUID);
-//                if (c == null) {
-//                    mLogger.log("service doesn't support receiving data.");
-//                    gatt.close();
-//                    return;
-//                }
-//
-//                c.setValue(peer.getData());
-//                boolean r = gatt.writeCharacteristic(c);
-//                mLogger.log("WriteCharacteristic " + r);
-//            } else {
-//            }
-//
-//        }
-//
-//            peer.getGatt().writeCharacteristic()
-//            if (null == ) {
-//                return false;
-//            }
-//
-//            mLogger.log("This connection is for sending data");
-//            peer.setData(null);
-//            return;
-//            return true;
-//        }
     }
 
 
-
-
-private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
+    private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
     @Override
-    public void onConnectionStateChange(final BluetoothGatt gatt, int status, int newState) {
-        mLogger.log("GattCallback:onConnectionStateChange: [" + gatt.getDevice().getAddress() + "] status " + ClosebyHelper.status2String(status)
-                + ", state " + ClosebyHelper.connectionState2String(newState));
+        public void onConnectionStateChange(final BluetoothGatt gatt, int status, int newState) {
+            mLogger.log("GattCallback:onConnectionStateChange: [" + gatt.getDevice().getAddress() + "] status " + ClosebyHelper.status2String(status)
+                    + ", state " + ClosebyHelper.connectionState2String(newState));
 
-        super.onConnectionStateChange(gatt, status, newState);
-        ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
-        if (peer == null) {
-            mLogger.log("Can't find peer!!!");
-            return;
+            super.onConnectionStateChange(gatt, status, newState);
+            ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+            if (peer == null) {
+                mLogger.log("Can't find peer!!!");
+                return;
+            }
+
+            peer.setGatt(gatt);
+            switch (newState) {
+                case BluetoothProfile.STATE_CONNECTED:
+                    peer.onConnected();
+                    break;
+
+                case BluetoothProfile.STATE_DISCONNECTED:
+                    peer.onDisconnected();
+                    break;
+                default:
+            }
         }
 
-        peer.setGatt(gatt);
-        switch (newState) {
-            case BluetoothProfile.STATE_CONNECTED:
-                peer.onConnected();
-                break;
+        public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
+            mLogger.log("GattCallback:onMtuChanged: [" + gatt.getDevice().getAddress() + "] status " + status + ", mtu " + mtu);
+            super.onMtuChanged(gatt, mtu, status);
 
-            case BluetoothProfile.STATE_DISCONNECTED:
-                peer.onDisconnected();
-                break;
-            default:
-        }
-    }
-
-    public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
-        mLogger.log("GattCallback:onMtuChanged: [" + gatt.getDevice().getAddress() + "] status " + status + ", mtu " + mtu);
-        super.onMtuChanged(gatt, mtu, status);
-
-        ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
-        if (status == 0) {
-            mLogger.log("mtu change to " + mtu);
-            peer.setMTU(mtu);
-        }
-        peer.setGattState(GATT_STATE_MTU_CHANGED);
-    }
-
-    @Override
-    public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-        super.onServicesDiscovered(gatt, status);
-        mLogger.log("GattCallback:onServicesDiscovered: [" + gatt.getDevice().getAddress() + "] status " + status);
-
-        ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
-        gatt.getService(peer.getService().getServiceUuid());
-        assert(peer != null);
-        peer.setGattState(GATT_STATE_SERVICE_DISCOVERED);
-    }
-
-    @Override
-    public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-        super.onCharacteristicRead(gatt, characteristic, status);
-        if (status != 0) {
-            mLogger.log("onCharacteristicRead failed");
-            return;
+            ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+            if (status == 0) {
+                mLogger.log("mtu change to " + mtu);
+                peer.setMTU(mtu);
+            }
+            peer.setGattState(GATT_STATE_MTU_CHANGED);
         }
 
-        mLogger.log("GattCallback:onCharacteristicRead: [" + gatt.getDevice().getAddress() + "] status: " + status + ", value: " + new String(characteristic.getValue()));
-        ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
-        assert(peer != null);
+        @Override
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            super.onServicesDiscovered(gatt, status);
+            mLogger.log("GattCallback:onServicesDiscovered: [" + gatt.getDevice().getAddress() + "] status " + status);
 
-        peer.setProperty(characteristic.getUuid(), characteristic.getValue());
-        peer.invokeNextGattAction();
-    }
-
-
-    public void onCharacteristicWrite(BluetoothGatt gatt,
-                                      BluetoothGattCharacteristic characteristic, int status) {
-        super.onCharacteristicWrite(gatt, characteristic, status);
-        if (status != 0) {
-            mLogger.log("onCharacteristicWrite failed");
-            return;
+            ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+            gatt.getService(peer.getService().getServiceUuid());
+            peer.setGattState(GATT_STATE_SERVICE_DISCOVERED);
         }
 
-        mLogger.log("GattCallback:onCharacteristicWrite: [" + gatt.getDevice().getAddress() + "] status: " + status + ", value: " + new String(characteristic.getValue()));
-        ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
-        assert(peer != null);
-        peer.invokeNextGattAction();
-    }
+        @Override
+        public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
+            super.onCharacteristicRead(gatt, characteristic, status);
+            if (status != 0) {
+                mLogger.log("onCharacteristicRead failed");
+                return;
+            }
 
-    public void onCharacteristicChanged(BluetoothGatt gatt,
-                                        BluetoothGattCharacteristic characteristic) {
-    }
-
-    public void onDescriptorRead(BluetoothGatt gatt, BluetoothGattDescriptor descriptor,
-                                 int status) {
-    }
-
-    public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor,
-                                  int status) {
-    }
-
-    public void onReliableWriteCompleted(BluetoothGatt gatt, int status) {
-        mLogger.log("Write done! " + status);
-
-    }
+            mLogger.log("GattCallback:onCharacteristicRead: [" + gatt.getDevice().getAddress() + "] status: " + status + ", value: " + new String(characteristic.getValue()));
+            ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+            peer.setProperty(characteristic.getUuid(), characteristic.getValue());
+            peer.invokeNextGattAction();
+        }
 
 
-    public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
-    }
+        public void onCharacteristicWrite(BluetoothGatt gatt,
+                                          BluetoothGattCharacteristic characteristic, int status) {
+            super.onCharacteristicWrite(gatt, characteristic, status);
+            if (status != 0) {
+                mLogger.log("onCharacteristicWrite failed");
+                return;
+            }
 
-};
+            mLogger.log("GattCallback:onCharacteristicWrite: [" + gatt.getDevice().getAddress() + "] status: " + status + ", value: " + new String(characteristic.getValue()));
+            ClosebyPeer peer = mCloseby.getPeerByAddress(gatt.getDevice().getAddress());
+            assert(peer != null);
+            peer.invokeNextGattAction();
+        }
+
+        public void onCharacteristicChanged(BluetoothGatt gatt,
+                                            BluetoothGattCharacteristic characteristic) {
+        }
+
+        public void onDescriptorRead(BluetoothGatt gatt, BluetoothGattDescriptor descriptor,
+                                     int status) {
+        }
+
+        public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor,
+                                      int status) {
+        }
+
+        public void onReliableWriteCompleted(BluetoothGatt gatt, int status) {
+            mLogger.log("Write done! " + status);
+
+        }
+
+
+        public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
+        }
+
+    };
 
 }

@@ -77,10 +77,6 @@ public class Closeby {
         return mBluetoothAdapter;
     }
 
-    protected BluetoothManager getManager() {
-        return mManager;
-    }
-
     protected Context getContext() {
         return mContext;
     }
