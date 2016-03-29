@@ -15,6 +15,12 @@ import android.widget.TextView;
 import net.tplgy.closeby.Closeby;
 import net.tplgy.closeby.ClosebyPeer;
 
+import org.webrtc.IceCandidate;
+import org.webrtc.MediaStream;
+import org.webrtc.PeerConnection;
+import org.webrtc.PeerConnectionFactory;
+import org.webrtc.SessionDescription;
+
 import java.util.UUID;
 
 public class PeerActivity extends AppCompatActivity {
@@ -94,6 +100,10 @@ public class PeerActivity extends AppCompatActivity {
         final byte[] email = mPeer.getProperty(UUID.fromString(EMAIL_UUID));
         textview.setText(new String(email));
         //mCloseby.getProperties(peer, mListener);
+
+        PeerConnectionFactory.initializeAndroidGlobals(this, true, true, true, null);
+        PeerConnectionFactory peerConnectionFactory = new PeerConnectionFactory();
+        peerConnectionFactory.createLocalMediaStream("Local");
     }
 
 }

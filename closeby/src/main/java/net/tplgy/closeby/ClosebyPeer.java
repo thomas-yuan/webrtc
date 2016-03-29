@@ -264,16 +264,19 @@ public class ClosebyPeer {
 
     public boolean sendData(byte[] data) {
         if (mConnectionState == STATE_CONNECTED) {
+            mLogger.log("Connected. send data right now.");
             if (mDataQueue.size() == 0) {
                 return send(data);
             }
 
+            mLogger.log("have data not sent yet, queue it.");
             mDataQueue.add(data);
             return true;
         }
 
         mDataQueue.add(data);
         if (mConnectionState != STATE_CONNECTING) {
+            mLogger.log("disconnected. connect to peer again.");
             connect();
         }
 
