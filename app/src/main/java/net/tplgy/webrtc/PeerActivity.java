@@ -23,6 +23,17 @@ public class PeerActivity extends AppCompatActivity {
 
     private Closeby mCloseby;
     private ClosebyPeer mPeer;
+    private Peers ps;
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        final TextView messages = (TextView) findViewById(R.id.textView3);
+        if (ps.mMessages.get(mPeer.getAddress()) != null) {
+            messages.setText(ps.mMessages.get(mPeer.getAddress()));
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -30,18 +41,10 @@ public class PeerActivity extends AppCompatActivity {
         setContentView(R.layout.activity_peer);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
+        ps = ((Peers)getApplicationContext());
 
         String peerAddress = getIntent().getStringExtra("CLOSEBY_PEER");
-        String msg = getIntent().getStringExtra("MESSAGE");
-        if (msg != null) {
-            final TextView messages = (TextView) findViewById(R.id.textView3);
-            assert(messages != null);
-            messages.append(msg);
-        }
-
-
         assert (!peerAddress.isEmpty());
-        Log.i("SS", peerAddress);
 
         final AlertDialog mDialog = new AlertDialog.Builder(this).setTitle("Error")
                 .setMessage("Please write something to send")
@@ -64,6 +67,13 @@ public class PeerActivity extends AppCompatActivity {
                     return;
                 }
 
+                if (ps.mMessages.get(mPeer.getAddress()) == null) {
+                    ps.mMessages.put(mPeer.getAddress(), ps.myself + ": " + message.getText().toString());
+                } else {
+                    ps.mMessages.put(mPeer.getAddress(), ps.mMessages.get(mPeer.getAddress()) + "\n" + ps.myself + ": " + message.getText().toString());
+                }
+                final TextView messages = (TextView) findViewById(R.id.textView3);
+                messages.setText(ps.mMessages.get(mPeer.getAddress()));
                 mCloseby.sendDataToPeer(mPeer, message.getText().toString().getBytes());
             }
         });
@@ -79,7 +89,6 @@ public class PeerActivity extends AppCompatActivity {
         final TextView textview = (TextView) findViewById(R.id.textView2);
         final byte[] email = mPeer.getProperty(UUID.fromString(EMAIL_UUID));
         textview.setText(new String(email));
-
         //mCloseby.getProperties(peer, mListener);
     }
 

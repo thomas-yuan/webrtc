@@ -5,6 +5,7 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
+        android:name=".Peers"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
@@ -17,6 +18,7 @@
         </activity>
         <activity
             android:name=".PeerActivity"
+            android:launchMode = "singleTask"
             android:label="@string/title_activity_peer"
             android:theme="@style/AppTheme.NoActionBar"></activity>
     </application>

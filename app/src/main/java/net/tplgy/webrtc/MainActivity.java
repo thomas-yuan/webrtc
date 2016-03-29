@@ -26,14 +26,18 @@ import net.tplgy.closeby.ClosebyService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import android.app.Application;
+
 
 public class MainActivity extends AppCompatActivity {
 
     private final static String SERVICE_UUID = "0000546f-0000-1000-8000-00805f9b34fb";
     private final static String EMAIL_UUID = "11111111-2222-3333-4444-666666666666";
-    private ArrayList<ClosebyPeer> mPeers;
     private StableArrayAdapter mAdapter;
+
+    Peers ps;
 
     Closeby mCloseby;
 
@@ -42,7 +46,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
+        ps = ((Peers)getApplicationContext());
         final TextView textview = (TextView) findViewById(R.id.textView);
         assert (textview!=null);
         textview.setMovementMethod(new ScrollingMovementMethod());
@@ -77,8 +81,8 @@ public class MainActivity extends AppCompatActivity {
 
         final ListView listview = (ListView) findViewById(R.id.listView);
         assert (listview != null);
-        mPeers = new ArrayList<>();
-        mAdapter = new StableArrayAdapter(this, android.R.layout.simple_list_item_1, mPeers);
+        ps.mPeers = new ArrayList<>();
+        mAdapter = new StableArrayAdapter(this, android.R.layout.simple_list_item_1, ps.mPeers);
         listview.setAdapter(mAdapter);
 
         final Button central = (Button) findViewById(R.id.button2);
@@ -90,8 +94,8 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        mPeers.add(peer);
-                        mAdapter.mIdMap.put(peer, mPeers.size());
+                        ps.mPeers.add(peer);
+                        mAdapter.mIdMap.put(peer, ps.mPeers.size());
                         mAdapter.notifyDataSetChanged();                    }
                 });
             }
@@ -100,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        mPeers.remove(peer);
+                        ps.mPeers.remove(peer);
                         mAdapter.mIdMap.remove(peer);
                         mAdapter.notifyDataSetChanged();
                     }
@@ -131,7 +135,7 @@ public class MainActivity extends AppCompatActivity {
                     mDialog.show();
                     return;
                 }
-
+                ps.myself = username.getText().toString();
                 mCloseby.stopAdvertising();
 
                 ClosebyService s = new ClosebyService(UUID.fromString(SERVICE_UUID));
@@ -146,10 +150,18 @@ public class MainActivity extends AppCompatActivity {
                             public void run() {
                                 textview.append("message received from peer: " + peer.getAddress() + ": " + new String(data));
 
-                                Intent intentMain = new Intent(MainActivity.this ,
+                                String user = new String(peer.getServiceData());
+                                String message = ps.mMessages.get(peer.getAddress());
+                                if (null == message) {
+                                    ps.mMessages.put(peer.getAddress(), user + ": " + new String(data));
+                                } else {
+                                    message = message + "\n" + user + ": "+ new String(data);
+                                    ps.mMessages.put(peer.getAddress(), message);
+                                }
+
+                                Intent intentMain = new Intent(MainActivity.this,
                                         PeerActivity.class);
                                 intentMain.putExtra("CLOSEBY_PEER", peer.getAddress());
-                                intentMain.putExtra("MESSAGE", new String(data));
                                 MainActivity.this.startActivity(intentMain);
                             }
                         });
@@ -201,6 +213,11 @@ public class MainActivity extends AppCompatActivity {
         public long getItemId(int position) {
             ClosebyPeer item = getItem(position);
             return mIdMap.get(item);
+        }
+
+        @Override
+        public int getCount() {
+            return super.getCount();
         }
 
         @Override
