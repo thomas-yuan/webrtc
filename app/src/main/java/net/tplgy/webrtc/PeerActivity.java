@@ -5,6 +5,7 @@ import android.content.DialogInterface;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -57,6 +58,9 @@ public class PeerActivity extends AppCompatActivity {
 
 
         final EditText message = (EditText) findViewById(R.id.editText3);
+        final TextView messages = (TextView) findViewById(R.id.textView3);
+        messages.setMovementMethod(new ScrollingMovementMethod());
+
         final Button send = (Button) findViewById(R.id.button);
         assert (send != null);
         send.setOnClickListener(new View.OnClickListener() {
@@ -72,9 +76,9 @@ public class PeerActivity extends AppCompatActivity {
                 } else {
                     ps.mMessages.put(mPeer.getAddress(), ps.mMessages.get(mPeer.getAddress()) + "\n" + ps.myself + ": " + message.getText().toString());
                 }
-                final TextView messages = (TextView) findViewById(R.id.textView3);
                 messages.setText(ps.mMessages.get(mPeer.getAddress()));
                 mCloseby.sendDataToPeer(mPeer, message.getText().toString().getBytes());
+                message.setText(new String());
             }
         });
 
